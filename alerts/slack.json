@@ -1,0 +1,11 @@
+{
+  "channel": "slack",
+  "enabled": false,
+  "config": {
+    "webhook_url": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL",
+    "channel": "#alerts"
+  },
+  "message_template": {
+    "text": ":rotating_light: *{{alert_type}}* — `{{service_name}}` is *{{status}}*\n> {{message}}\n_Time: {{timestamp}}_"
+  }
+}

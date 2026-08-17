@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{SERVICE_NAME}} — Status Page</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --card-bg: #1a1d27;
+    --text: #e4e6eb;
+    --text-muted: #8b8f9a;
+    --green: #22c55e;
+    --red: #ef4444;
+    --yellow: #f59e0b;
+    --border: #2a2d3a;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 2rem 1rem;
+  }
+  .container { max-width: 720px; margin: 0 auto; }
+  header { text-align: center; margin-bottom: 2.5rem; }
+  header h1 { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.5rem; }
+  header .overall {
+    display: inline-flex; align-items: center; gap: 0.5rem;
+    padding: 0.4rem 1rem; border-radius: 999px;
+    font-size: 0.9rem; font-weight: 600;
+  }
+  .overall.operational { background: rgba(34,197,94,0.15); color: var(--green); }
+  .overall.degraded    { background: rgba(245,158,11,0.15); color: var(--yellow); }
+  .overall.down        { background: rgba(239,68,68,0.15); color: var(--red); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .dot.green  { background: var(--green); }
+  .dot.red    { background: var(--red); }
+  .dot.yellow { background: var(--yellow); }
+
+  .service {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .service-info { display: flex; flex-direction: column; gap: 0.2rem; }
+  .service-name { font-weight: 600; font-size: 1.05rem; }
+  .service-meta { font-size: 0.82rem; color: var(--text-muted); }
+  .service-status { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; }
+  .status-up   { color: var(--green); }
+  .status-down { color: var(--red); }
+
+  footer {
+    text-align: center; margin-top: 2rem;
+    font-size: 0.8rem; color: var(--text-muted);
+  }
+  /* Replace {{SERVICE_NAME}} in the <title> and <h1> tags with your service name. */
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>{{SERVICE_NAME}} Status</h1>
+    <span class="overall operational">
+      <span class="dot green"></span> All Systems Operational
+    </span>
+  </header>
+
+  <!-- ─── Service entries ─────────────────────────────────── -->
+  <!-- Duplicate this block for each service you monitor.       -->
+  <!-- Replace placeholder values with real data.               -->
+  <div class="service">
+    <div class="service-info">
+      <span class="service-name">Web Application</span>
+      <span class="service-meta">Response: 142ms · Uptime: 99.98%</span>
+    </div>
+    <div class="service-status status-up">
+      <span class="dot green"></span> Operational
+    </div>
+  </div>
+
+  <div class="service">
+    <div class="service-info">
+      <span class="service-name">API Gateway</span>
+      <span class="service-meta">Response: 38ms · Uptime: 100.00%</span>
+    </div>
+    <div class="service-status status-up">
+      <span class="dot green"></span> Operational
+    </div>
+  </div>
+
+  <div class="service">
+    <div class="service-info">
+      <span class="service-name">Database</span>
+      <span class="service-meta">Response: 5ms · Uptime: 99.95%</span>
+    </div>
+    <div class="service-status status-up">
+      <span class="dot green"></span> Operational
+    </div>
+  </div>
+
+  <!-- Example of a down service (uncomment and edit as needed) -->
+  <!--
+  <div class="service">
+    <div class="service-info">
+      <span class="service-name">Backup Service</span>
+      <span class="service-meta">Response: — · Uptime: 97.32%</span>
+    </div>
+    <div class="service-status status-down">
+      <span class="dot red"></span> Down
+    </div>
+  </div>
+  -->
+
+  <footer>
+    Powered by <a href="https://github.com/0x10debug/monitor-stack" style="color:var(--text-muted);">monitor-stack</a>
+    · Last updated: <span id="last-updated">—</span>
+  </footer>
+</div>
+<script>
+  document.getElementById('last-updated').textContent = new Date().toISOString();
+</script>
+</body>
+</html>

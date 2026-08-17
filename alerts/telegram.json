@@ -1,0 +1,11 @@
+{
+  "channel": "telegram",
+  "enabled": false,
+  "config": {
+    "bot_token": "YOUR_TELEGRAM_BOT_TOKEN",
+    "chat_id": "YOUR_TELEGRAM_CHAT_ID"
+  },
+  "message_template": {
+    "text": "🔔 *{{alert_type}}*\n*Service:* {{service_name}}\n*Status:* {{status}}\n*Time:* {{timestamp}}\n*Message:* {{message}}"
+  }
+}

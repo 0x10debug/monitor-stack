@@ -1,0 +1,16 @@
+{
+  "channel": "email",
+  "enabled": false,
+  "config": {
+    "smtp_host": "smtp.example.com",
+    "smtp_port": 587,
+    "username": "your_smtp_username",
+    "password": "your_smtp_password",
+    "from": "alerts@example.com",
+    "to": "admin@example.com"
+  },
+  "message_template": {
+    "subject_template": "[{{alert_type}}] {{service_name}} is {{status}}",
+    "body_template": "Alert Type: {{alert_type}}\nService: {{service_name}}\nStatus: {{status}}\nTime: {{timestamp}}\n\nMessage:\n{{message}}"
+  }
+}

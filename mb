@@ -1,0 +1,393 @@
+#!/usr/bin/env bash
+# mb — monitor-stack CLI
+# Deploy and manage a self-hosted VPS monitoring stack.
+#
+# Part of the 0x10debug VPS tool suite.
+# https://github.com/0x10debug/monitor-stack
+#
+# Usage: mb monitor <command> [options]
+#   deploy              Deploy the monitoring stack
+#   status              Show stack status
+#   add-host            Add a remote node (Beszel agent)
+#   add-service         Instructions for adding monitors in Uptime Kuma
+#   alert setup         Configure an alert channel
+#   alert test          Send a test alert
+#   alert list          List configured alert channels
+#   status-page         Deploy the status page
+#   security-dashboard  Show CrowdSec integration instructions
+#   update              Update the monitoring stack
+#   help                Show this help message
+
+set -euo pipefail
+
+# ─── Resolve paths and source libraries ──────────────────────
+MB_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=lib/common.sh
+source "${MB_SCRIPT_DIR}/lib/common.sh"
+# shellcheck source=lib/alert.sh
+source "${MB_SCRIPT_DIR}/lib/alert.sh"
+
+# ─── Help ────────────────────────────────────────────────────
+mb_monitor_help() {
+    cat <<'EOF'
+mb monitor — Self-hosted VPS monitoring stack
+
+USAGE:
+    mb monitor <command> [options]
+
+COMMANDS:
+    deploy              Deploy the monitoring stack (Uptime Kuma + Beszel Hub)
+    status              Show running stack status
+    add-host            Add a remote node for monitoring (installs Beszel agent)
+    add-service         Show instructions for adding monitors in Uptime Kuma
+    alert setup         Configure an alert channel (telegram/discord/email/slack)
+    alert test          Send a test alert through a configured channel
+    alert list          List all configured alert channels
+    status-page         Deploy the public status page
+    security-dashboard  Show CrowdSec security integration instructions
+    update              Pull latest images and restart the stack
+    help                Show this help message
+
+EXAMPLES:
+    mb monitor deploy
+    mb monitor add-host
+    mb monitor alert setup
+    mb monitor status-page
+
+DOCUMENTATION:
+    https://github.com/0x10debug/monitor-stack#readme
+
+EOF
+    mb_version
+}
+
+# ─── deploy ──────────────────────────────────────────────────
+mb_monitor_deploy() {
+    mb_check_docker
+    mb_step "Deploying monitor-stack"
+
+    # Ensure proxy network
+    mb_ensure_proxy_network "${MB_PROXY_NETWORK:-mb-proxy}"
+
+    # Prepare deploy directory
+    mb_step "Preparing deploy directory: $MB_DEPLOY_DIR"
+    sudo mkdir -p "$MB_DEPLOY_DIR"
+    sudo cp "${MB_COMPOSE_DIR}/compose.yml" "${MB_DEPLOY_DIR}/compose.yml"
+
+    # Generate .env
+    local env_file="${MB_DEPLOY_DIR}/.env"
+    if [[ -f "$env_file" ]]; then
+        mb_detail ".env already exists — keeping current values"
+    else
+        mb_step "Generating .env from template"
+        local monitor_domain
+        monitor_domain="$(mb_ask_value "Monitoring domain (e.g. monitor.example.com)" "")"
+        cat > /tmp/mb-monitor.env <<EOF
+MONITOR_DOMAIN=${monitor_domain}
+# UPTIME_KUMA_PORT=3001
+# BESZEL_HUB_PORT=8090
+EOF
+        sudo mv /tmp/mb-monitor.env "$env_file"
+        mb_success ".env created at $env_file"
+    fi
+
+    # Create data directories
+    mb_step "Creating data directories"
+    sudo mkdir -p /data/uptime-kuma /data/beszel
+    mb_success "Data directories ready"
+
+    # Docker compose up
+    mb_step "Starting services with docker compose"
+    sudo docker compose -f "${MB_DEPLOY_DIR}/compose.yml" --env-file "${env_file}" up -d
+    mb_success "monitor-stack deployed"
+
+    echo
+    mb_info "Next steps:"
+    mb_detail "1. Open Uptime Kuma at http://localhost:${UPTIME_KUMA_PORT:-3001}"
+    mb_detail "2. Create your admin account on first visit"
+    mb_detail "3. Open Beszel Hub at http://localhost:${BESZEL_HUB_PORT:-8090}"
+    mb_detail "4. Run 'mb monitor add-host' to add remote nodes"
+    mb_detail "5. Run 'mb monitor alert setup' to configure alerts"
+}
+
+# ─── status ──────────────────────────────────────────────────
+mb_monitor_status() {
+    mb_check_docker
+    mb_step "monitor-stack status"
+
+    local compose_file="${MB_DEPLOY_DIR}/compose.yml"
+    local env_file="${MB_DEPLOY_DIR}/.env"
+
+    if [[ ! -f "$compose_file" ]]; then
+        mb_warn "monitor-stack is not deployed. Run 'mb monitor deploy' first."
+        return 1
+    fi
+
+    echo
+    sudo docker compose -f "$compose_file" --env-file "$env_file" ps 2>/dev/null || \
+        sudo docker compose -f "$compose_file" ps 2>/dev/null || \
+        mb_warn "Could not retrieve container status."
+
+    echo
+    mb_info "Data directories:"
+    for d in /data/uptime-kuma /data/beszel; do
+        if [[ -d "$d" ]]; then
+            local size
+            size="$(sudo du -sh "$d" 2>/dev/null | cut -f1 || echo "unknown")"
+            mb_detail "$d — ${size}"
+        else
+            mb_detail "$d — not created"
+        fi
+    done
+}
+
+# ─── add-host ────────────────────────────────────────────────
+mb_monitor_add_host() {
+    mb_step "Add Remote Node (Beszel Agent)"
+
+    echo
+    mb_info "This will install the Beszel agent on a remote node."
+    mb_info "You need the hub URL and an agent key from the Beszel Hub UI."
+    mb_detail "Generate a key in Beszel Hub → Settings → Add System"
+    echo
+
+    local hub_url hub_key node_name ssh_target
+    hub_url="$(mb_ask_value "Beszel hub URL (e.g. http://your-server:8090)" "")"
+    hub_key="$(mb_ask_value "Agent key (from Beszel Hub)" "")"
+    node_name="$(mb_ask_value "Node name (display in hub)" "")"
+    ssh_target="$(mb_ask_value "SSH target for remote node (user@ip)" "")"
+
+    [[ -n "$hub_url" ]]    || mb_die "Hub URL is required."
+    [[ -n "$hub_key" ]]    || mb_die "Agent key is required."
+    [[ -n "$node_name" ]]  || mb_die "Node name is required."
+    [[ -n "$ssh_target" ]] || mb_die "SSH target is required."
+
+    local agent_script="${MB_SCRIPT_DIR}/agents/beszel-agent.sh"
+    [[ -f "$agent_script" ]] || mb_die "Agent script not found: $agent_script"
+
+    mb_step "Installing Beszel agent on $ssh_target"
+    mb_detail "Copying script and running remotely..."
+
+    scp "$agent_script" "${ssh_target}:/tmp/beszel-agent.sh" 2>/dev/null || \
+        mb_die "Failed to copy agent script to $ssh_target"
+
+    # shellcheck disable=SC2029 # intentional client-side expansion
+    ssh "$ssh_target" \
+        "sudo bash /tmp/beszel-agent.sh --hub-url '${hub_url}' --key '${hub_key}' --node-name '${node_name}'" \
+        || mb_die "Remote agent installation failed."
+
+    mb_success "Beszel agent installed on $ssh_target (node: $node_name)"
+    mb_detail "Check the Beszel Hub UI to confirm the node appears."
+}
+
+# ─── add-service ─────────────────────────────────────────────
+mb_monitor_add_service() {
+    mb_step "Add a Monitor in Uptime Kuma"
+
+    cat <<'EOF'
+
+To add a new service monitor in Uptime Kuma:
+
+  1. Open Uptime Kuma in your browser:
+     http://localhost:3001  (or your configured domain)
+
+  2. Log in with your admin account.
+
+  3. Click "+ Add New Monitor" (top-right).
+
+  4. Configure the monitor:
+     - Monitor Type:  HTTP(s), TCP Port, Ping, DNS, or Docker
+     - Friendly Name:  A label for the service
+     - URL / Host:     The endpoint to monitor
+     - Heartbeat Interval:  How often to check (e.g. 60 seconds)
+     - Retries:         1-3 (retry before marking down)
+
+  5. (Optional) Set up notifications:
+     - Go to Settings → Notifications
+     - Add a channel (Telegram, Discord, Email, Slack, etc.)
+     - Assign it to monitors
+
+  6. Click "Save" to start monitoring.
+
+  Tip: Use the "Docker" monitor type to track container health
+       directly if Uptime Kuma has Docker socket access.
+
+  Documentation: https://github.com/louislam/uptime-kuma/wiki
+
+EOF
+}
+
+# ─── status-page ─────────────────────────────────────────────
+mb_monitor_status_page() {
+    mb_step "Deploy Status Page"
+
+    local default_dest="/data/uptime-kuma/status-page.html"
+    local dest
+    dest="$(mb_ask_value "Destination path for status page" "$default_dest")"
+
+    local src="${MB_SCRIPT_DIR}/dashboards/status-page.html"
+    [[ -f "$src" ]] || mb_die "Status page template not found: $src"
+
+    sudo mkdir -p "$(dirname "$dest")"
+    sudo cp "$src" "$dest"
+    mb_success "Status page copied to $dest"
+
+    echo
+    mb_info "To serve the status page:"
+    mb_detail "Option 1: Uptime Kuma built-in status page (Settings → Status Pages)"
+    mb_detail "Option 2: Serve this HTML via Caddy or nginx"
+    mb_detail "Option 3: Copy to your web root: sudo cp $dest /var/www/html/status.html"
+    echo
+    mb_detail "Edit $dest and replace {{SERVICE_NAME}} with your service name."
+    mb_detail "Customize the service entries with your real status data."
+}
+
+# ─── security-dashboard ──────────────────────────────────────
+mb_monitor_security_dashboard() {
+    mb_step "CrowdSec Security Integration"
+
+    # Check if CrowdSec is installed
+    if command -v cscli >/dev/null 2>&1; then
+        mb_success "CrowdSec is installed on this node"
+        echo
+        mb_info "Current CrowdSec status:"
+        sudo cscli metrics 2>/dev/null || cscli metrics 2>/dev/null || true
+        echo
+        mb_info "Recent decisions (blocked IPs):"
+        sudo cscli decisions list -o human 2>/dev/null | head -20 || true
+        echo
+        mb_info "Recent alerts:"
+        sudo cscli alerts list -o human 2>/dev/null | head -20 || true
+    else
+        mb_warn "CrowdSec is not installed on this node."
+        mb_detail "Install CrowdSec: curl -s https://packagecloud.io/install/repositories/crowdsec/crowdsec/script.deb.sh | sudo bash && sudo apt install crowdsec"
+    fi
+
+    echo
+    cat <<'EOF'
+
+To integrate CrowdSec with monitor-stack:
+
+  1. Install CrowdSec on each monitored node:
+     https://doc.crowdsec.net/docs/getting_started/installation
+
+  2. Install the CrowdSec notification plugin for alerts:
+     cscli bouncers list
+     cscli collections install crowdsecurity/...
+
+  3. Use the dashboard schema template:
+     dashboards/crowdsec-dashboard.json
+
+     This defines the data schema for:
+       - blocked_ips_today
+       - top_attacker_countries
+       - attack_types
+       - alerts_last_24h
+
+  4. Collect metrics with cscli:
+     cscli decisions list --json    # blocked IPs
+     cscli alerts list --json       # security alerts
+     cscli metrics                  # parser/router metrics
+
+  5. Feed metrics into Uptime Kuma:
+     - Add an HTTP monitor pointing to a script endpoint
+       that outputs CrowdSec stats as JSON
+     - Or use a custom notification webhook from CrowdSec
+       to your alert channel (Telegram/Discord/Slack)
+
+  6. Set up CrowdSec notifications:
+     Edit /etc/crowdsec/notifications/ and configure:
+       - email            → smtp://localhost:25
+       - slack            → webhook URL
+       - discord          → webhook URL
+       - http (custom)    → POST to your alert endpoint
+
+  Documentation:
+    https://github.com/0x10debug/monitor-stack/blob/main/docs/security-monitoring.md
+    https://doc.crowdsec.net/
+
+EOF
+}
+
+# ─── update ──────────────────────────────────────────────────
+mb_monitor_update() {
+    mb_check_docker
+    mb_step "Updating monitor-stack"
+
+    local compose_file="${MB_DEPLOY_DIR}/compose.yml"
+    local env_file="${MB_DEPLOY_DIR}/.env"
+
+    if [[ ! -f "$compose_file" ]]; then
+        mb_die "monitor-stack is not deployed. Run 'mb monitor deploy' first."
+    fi
+
+    # Copy latest compose file
+    sudo cp "${MB_COMPOSE_DIR}/compose.yml" "$compose_file"
+
+    mb_step "Pulling latest images"
+    sudo docker compose -f "$compose_file" --env-file "$env_file" pull 2>/dev/null || \
+        sudo docker compose -f "$compose_file" pull
+
+    mb_step "Restarting services"
+    sudo docker compose -f "$compose_file" --env-file "$env_file" up -d 2>/dev/null || \
+        sudo docker compose -f "$compose_file" up -d
+
+    mb_success "monitor-stack updated"
+    mb_detail "Check status with: mb monitor status"
+}
+
+# ─── alert subcommands ───────────────────────────────────────
+mb_monitor_alert() {
+    local subcmd="${1:-}"
+    shift || true
+    case "$subcmd" in
+        setup) mb_alert_setup "$@" ;;
+        test)  mb_alert_test "$@" ;;
+        list)  mb_alert_list "$@" ;;
+        "")    mb_die "Usage: mb monitor alert <setup|test|list>" ;;
+        *)     mb_die "Unknown alert subcommand: $subcmd (valid: setup, test, list)" ;;
+    esac
+}
+
+# ─── Command router ──────────────────────────────────────────
+mb_monitor() {
+    local cmd="${1:-help}"
+    shift || true
+
+    case "$cmd" in
+        deploy)              mb_monitor_deploy "$@" ;;
+        status)              mb_monitor_status "$@" ;;
+        add-host)            mb_monitor_add_host "$@" ;;
+        add-service)         mb_monitor_add_service "$@" ;;
+        alert)               mb_monitor_alert "$@" ;;
+        status-page)         mb_monitor_status_page "$@" ;;
+        security-dashboard)  mb_monitor_security_dashboard "$@" ;;
+        update)              mb_monitor_update "$@" ;;
+        help|-h|--help)      mb_monitor_help ;;
+        version|-v|--version) mb_version ;;
+        "")                  mb_monitor_help ;;
+        *)                   mb_error "Unknown command: $cmd"; echo; mb_monitor_help; exit 1 ;;
+    esac
+}
+
+# ─── Main entry point ────────────────────────────────────────
+main() {
+    local module="${1:-}"
+    shift || true
+
+    case "$module" in
+        monitor) mb_monitor "$@" ;;
+        help|-h|--help) mb_monitor_help ;;
+        version|-v|--version) mb_version ;;
+        "") mb_monitor_help ;;
+        *)
+            mb_error "Unknown module: $module"
+            echo
+            mb_monitor_help
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"

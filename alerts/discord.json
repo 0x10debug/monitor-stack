@@ -1,0 +1,16 @@
+{
+  "channel": "discord",
+  "enabled": false,
+  "config": {
+    "webhook_url": "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN"
+  },
+  "message_template": {
+    "embeds": [
+      {
+        "title": "{{alert_type}} — {{service_name}}",
+        "description": "**Status:** {{status}}\n**Time:** {{timestamp}}\n**Message:** {{message}}",
+        "color": 16711680
+      }
+    ]
+  }
+}

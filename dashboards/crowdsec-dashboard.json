@@ -1,0 +1,57 @@
+{
+  "dashboard": "crowdsec-security",
+  "version": "1.0.0",
+  "description": "CrowdSec security metrics schema for the monitor-stack. This is a data schema template — populate the fields from CrowdSec API or cscli output.",
+  "fields": {
+    "blocked_ips_today": {
+      "type": "integer",
+      "description": "Number of IPs blocked by CrowdSec today",
+      "value": 0
+    },
+    "top_attacker_countries": {
+      "type": "array",
+      "description": "Top countries by attack volume in the last 24 hours",
+      "items": {
+        "type": "object",
+        "properties": {
+          "country": { "type": "string", "value": "" },
+          "attacks": { "type": "integer", "value": 0 }
+        }
+      },
+      "value": []
+    },
+    "attack_types": {
+      "type": "array",
+      "description": "Breakdown of attack scenarios detected",
+      "items": {
+        "type": "object",
+        "properties": {
+          "scenario": { "type": "string", "value": "" },
+          "count": { "type": "integer", "value": 0 }
+        }
+      },
+      "value": []
+    },
+    "alerts_last_24h": {
+      "type": "array",
+      "description": "Security alerts triggered in the last 24 hours",
+      "items": {
+        "type": "object",
+        "properties": {
+          "timestamp": { "type": "string", "value": "" },
+          "scenario": { "type": "string", "value": "" },
+          "source_ip": { "type": "string", "value": "" },
+          "country": { "type": "string", "value": "" },
+          "severity": { "type": "string", "value": "" }
+        }
+      },
+      "value": []
+    }
+  },
+  "data_source": {
+    "type": "crowdsec",
+    "api_endpoint": "http://localhost:8080/v1",
+    "collection_method": "cscli decisions list --json / cscli alerts list --json",
+    "refresh_interval_seconds": 60
+  }
+}

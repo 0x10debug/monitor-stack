@@ -1,0 +1,46 @@
+# monitor-stack Caddyfile example
+# Place in your Caddy import directory and adjust MONITOR_DOMAIN.
+# Requires the mb-proxy external Docker network so Caddy can reach the
+# uptime-kuma container by name.
+
+{
+	# Global options
+	email admin@example.com
+}
+
+# ─── Monitoring dashboard ────────────────────────────────────
+# Replace MONITOR_DOMAIN with your actual domain, e.g. monitor.example.com
+MONITOR_DOMAIN {
+	encode zstd gzip
+
+	header {
+		# Security headers
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "geolocation=(), microphone=(), camera=()"
+		# Remove server version disclosure
+		-Server
+	}
+
+	reverse_proxy uptime-kuma:3001
+}
+
+# ─── Public status page ──────────────────────────────────────
+# Replace status.MONITOR_DOMAIN with your actual status domain,
+# e.g. status.example.com
+status.MONITOR_DOMAIN {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "geolocation=(), microphone=(), camera=()"
+		-Server
+	}
+
+	reverse_proxy uptime-kuma:3001
+}
