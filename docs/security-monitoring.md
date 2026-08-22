@@ -24,6 +24,34 @@ How to integrate CrowdSec security events into the monitor-stack.
 
 ## Step 1 — Install CrowdSec
 
+You have two deployment options.
+
+### Option A: Docker (recommended for monitor-stack users)
+
+A ready-to-use docker-compose template ships at `compose/crowdsec.yml`. It runs
+the CrowdSec detection engine plus a firewall bouncer, with pinned image tags
+and persistent storage under `/data/crowdsec`.
+
+```bash
+# 1. Create the data directories
+sudo mkdir -p /data/crowdsec/db /data/crowdsec/config
+
+# 2. Start CrowdSec first so the LAPI is up
+sudo docker compose -f compose/crowdsec.yml up -d crowdsec
+
+# 3. Register a bouncer and copy the printed key
+docker exec crowdsec cscli bouncers add mb-firewall -o raw
+
+# 4. Put the key into compose/.env as CROWDSEC_BOUNCER_KEY, then start the bouncer
+sudo docker compose -f compose/crowdsec.yml up -d crowdsec-bouncer
+```
+
+The bouncer configuration lives at `agents/crowdsec-bouncer.conf` and is
+bind-mounted into the bouncer container. Edit it to switch between the
+`nftables` and `iptables` backends depending on your host firewall.
+
+### Option B: Native package (for nodes without Docker)
+
 On each node you want to protect:
 
 ```bash
@@ -129,6 +157,31 @@ This command checks if CrowdSec is installed and displays current metrics, recen
 | `cscli bouncers list` | List active bouncers (firewall, nginx, etc.) |
 | `cscli hub update` | Update the hub index |
 | `cscli hub upgrade` | Upgrade installed collections |
+
+## auditd log forwarding
+
+Beyond CrowdSec's own detections, you may want to stream kernel-level audit
+events (logins, privilege escalations, file tampering) into the monitor-stack's
+log layer for long-term retention and correlation.
+
+A ready-to-use rsyslog template ships at `agents/auditd-exporter.conf`. It
+tails `/var/log/audit/audit.log`, enriches each event with host + timestamp as
+JSON, and writes a structured stream that Promtail (for Loki) or rsyslog's
+`omelasticsearch` module can pick up.
+
+Quick start on a monitored node:
+
+```bash
+sudo apt install -y rsyslog auditd
+sudo cp agents/auditd-exporter.conf /etc/rsyslog.d/60-auditd-exporter.conf
+sudo mkdir -p /var/log/auditd-exporter
+sudo chown syslog:adm /var/log/auditd-exporter
+sudo systemctl restart rsyslog
+```
+
+Then point Promtail at `/var/log/auditd-exporter/auditd.jsonl` with a static
+`job=auditd` label, or uncomment the `omelasticsearch` block in the template
+to ship directly to Elasticsearch/OpenSearch.
 
 ## Best practices
 
