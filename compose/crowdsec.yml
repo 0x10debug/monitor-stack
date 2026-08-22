@@ -1,0 +1,70 @@
+# monitor-stack — CrowdSec security stack
+# Part of the 0x10debug VPS tool suite
+# https://github.com/0x10debug/monitor-stack
+#
+# This is a standalone docker-compose template for CrowdSec (the detection
+# engine) plus a firewall bouncer (the enforcement component). It is meant to
+# be deployed alongside compose/compose.yml — either merged with `docker
+# compose -f compose.yml -f crowdsec.yml up -d` or run on a dedicated security
+# node. All images use pinned tags for reproducible deployments.
+#
+# Data is persisted under /data/crowdsec so the local API database, hub state,
+# and bouncer registration survive container recreations.
+#
+# Required env vars (see compose/.env.example):
+#   CROWDSEC_BOUNCER_KEY   — shared secret the bouncer uses to register with the LAPI
+
+networks:
+  mb-proxy:
+    external: true
+    name: ${MB_PROXY_NETWORK:-mb-proxy}
+
+services:
+  crowdsec:
+    image: crowdsecurity/crowdsec:1.6.4
+    container_name: crowdsec
+    restart: unless-stopped
+    environment:
+      # Collection ID reported to the community threat intel network.
+      # Leave default unless you registered a custom collection.
+      - COLLECTIONS=${CROWDSEC_COLLECTIONS:-crowdsecurity/linux}
+    volumes:
+      # Persist the local API database and hub state across restarts.
+      - /data/crowdsec/db:/var/lib/crowdsec/data
+      # Persist configuration so hub upgrades and custom parsers survive.
+      - /data/crowdsec/config:/etc/crowdsec
+      # Feed host logs into the container so CrowdSec parsers can read them.
+      # Adjust the source paths to match your host's log layout.
+      - /var/log:/var/log/host:ro
+      - /var/log/auth.log:/var/log/auth.log:ro
+      - /var/log/syslog:/var/log/syslog:ro
+    ports:
+      # Local API (LAPI) — consumed by bouncers and the monitor-stack.
+      # Bind to localhost only; the bouncer reaches it over the shared
+      # Docker network. Expose on the host only if a remote bouncer needs it.
+      - "127.0.0.1:${CROWDSEC_LAPI_PORT:-8080}:8080"
+    networks:
+      - mb-proxy
+
+  crowdsec-bouncer:
+    image: crowdsecurity/crowdsec-firewall-bouncer:0.0.32
+    container_name: crowdsec-bouncer
+    restart: unless-stopped
+    environment:
+      # The bouncer authenticates to the LAPI with this key. It must match a
+      # bouncer registration created via:
+      #   docker exec crowdsec cscli bouncers add mb-firewall -o raw
+      # Paste the returned key into CROWDSEC_BOUNCER_KEY in your .env.
+      - BOUNCER_KEY=${CROWDSEC_BOUNCER_KEY:?CROWDSEC_BOUNCER_KEY is required}
+    volumes:
+      # Mount the bouncer config template from the monitor-stack repo.
+      # The agents/crowdsec-bouncer.conf file is the source of truth; copy
+      # or bind it here so the bouncer picks up mode, backend, and LAPI URL.
+      - ../agents/crowdsec-bouncer.conf:/etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml:ro
+    depends_on:
+      - crowdsec
+    # The firewall bouncer manipulates host iptables/nftables, so it needs
+    # the NET_ADMIN capability and access to the host network stack.
+    cap_add:
+      - NET_ADMIN
+    network_mode: host
