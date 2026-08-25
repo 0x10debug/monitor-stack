@@ -1,6 +1,6 @@
 # Self-Hosted Monitoring Stack for VPS — Uptime, Metrics & Alerts
 
-A complete self-hosted monitoring stack for VPS servers, combining **Uptime Kuma** for uptime and availability monitoring, **Beszel** for performance metrics, and **CrowdSec** integration for security event tracking. Deploy everything with Docker in minutes, configure alerts via Telegram, Discord, Email, or Slack, and monitor unlimited remote nodes from a single dashboard. No SaaS dependencies, no monthly fees — full control over your VPS monitoring.
+A complete self-hosted monitoring stack for VPS servers, combining **Uptime Kuma** for uptime and availability monitoring, **Beszel** for performance metrics, **CrowdSec** integration for security event tracking, and **Loki + Promtail** for log aggregation. Deploy everything with Docker in minutes, configure alerts via Telegram, Discord, Email, or Slack, and monitor unlimited remote nodes from a single dashboard. No SaaS dependencies, no monthly fees — full control over your VPS monitoring.
 
 > Part of the [0x10debug](https://github.com/0x10debug) VPS tool suite.
 
@@ -11,6 +11,7 @@ A complete self-hosted monitoring stack for VPS servers, combining **Uptime Kuma
 | [Uptime Kuma](https://github.com/louislam/uptime-kuma) | Uptime & availability monitoring | 3001 | `/data/uptime-kuma` |
 | [Beszel Hub](https://github.com/henrygd/beszel) | Performance metrics & system stats | 8090 | `/data/beszel` |
 | [CrowdSec](https://github.com/crowdsecurity/crowdsec) | Security monitoring (integration) | — | schema template |
+| [Loki](https://github.com/grafana/loki) + [Promtail](https://grafana.com/docs/loki/latest/send-data/promtail/) | Log aggregation (syslog, auth, auditd, docker) | 3100 | `/data/loki` |
 | Alert templates | Telegram, Discord, Email, Slack | — | `/data/monitor-alerts` |
 | Status page | Self-contained HTML status page | — | configurable |
 
@@ -95,6 +96,9 @@ mb monitor status-page
 # Show CrowdSec security integration instructions
 mb monitor security-dashboard
 
+# Show Loki + Promtail log aggregation status and queries
+mb monitor logs
+
 # Update all services to latest images
 mb monitor update
 
@@ -136,6 +140,15 @@ The `dashboards/crowdsec-dashboard.json` file defines a data schema for displayi
 
 Run `mb monitor security-dashboard` for integration instructions.
 
+## Log Aggregation
+
+A Loki + Promtail docker-compose template ships at `compose/loki.yml`. Promtail tails host syslog, auth.log, the auditd JSON stream (from `agents/auditd-exporter.conf`), and optionally Docker container logs, then ships them to Loki for querying from Grafana with LogQL.
+
+- **Loki** — log store, port 3100, data at `/data/loki`, 14-day default retention
+- **Promtail** — log shipper with regex + JSON pipeline stages and labels (`job`, `host`, `program`, `container`)
+
+Run `mb monitor logs` for status and example queries. See [Log Aggregation](docs/logging-stack.md) for the full deployment guide and LogQL examples.
+
 ## FAQ
 
 ### Can I use a different reverse proxy instead of Caddy?
@@ -170,6 +183,7 @@ Store the archive off-site (e.g., to S3 or another server).
 - [Adding Hosts](docs/add-hosts.md) — How to add remote servers for monitoring
 - [Alert Configuration](docs/alert-configuration.md) — How to configure alert channels
 - [Security Monitoring](docs/security-monitoring.md) — How to integrate CrowdSec
+- [Log Aggregation](docs/logging-stack.md) — How to deploy Loki + Promtail and query logs with LogQL
 
 ## Related Repositories
 

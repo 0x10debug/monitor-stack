@@ -1,0 +1,75 @@
+# monitor-stack — Loki + Promtail log aggregation stack
+# Part of the 0x10debug VPS tool suite
+# https://github.com/0x10debug/monitor-stack
+#
+# This is a standalone docker-compose template for Loki (the log store) plus
+# Promtail (the log shipper). It is meant to be deployed alongside
+# compose/compose.yml — either merged with `docker compose -f compose.yml -f
+# loki.yml up -d` or run on a dedicated logging node. All images use pinned
+# tags for reproducible deployments.
+#
+# Loki stores compressed log streams under /data/loki so indexes and chunks
+# survive container recreations. Promtail tails host log files and the Docker
+# container log socket, enriches them with labels, and pushes them to Loki.
+#
+# Required env vars (see compose/.env.example):
+#   none — Loki and Promtail run with sensible defaults; override the ports
+#   and retention window via the optional LOKI_* variables if needed.
+
+networks:
+  mb-proxy:
+    external: true
+    name: ${MB_PROXY_NETWORK:-mb-proxy}
+
+services:
+  loki:
+    image: grafana/loki:3.2.1
+    container_name: loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      # Persist Loki indexes and chunks across restarts.
+      - /data/loki:/loki
+      # Bind-mount the Loki config from the monitor-stack repo.
+      - ../agents/loki-config.yml:/etc/loki/loki-config.yml:ro
+    ports:
+      # Loki HTTP API — consumed by Grafana and Promtail.
+      # Bind to localhost only; Grafana reaches it over the shared Docker
+      # network. Expose on the host only if a remote Grafana needs it.
+      - "127.0.0.1:${LOKI_PORT:-3100}:3100"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3100/ready | grep -q ready || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - mb-proxy
+
+  promtail:
+    image: grafana/promtail:3.2.1
+    container_name: promtail
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/promtail-config.yml
+    volumes:
+      # Persist Promtail positions so it does not re-ship logs on restart.
+      - /data/promtail:/tmp/promtail
+      # Bind-mount the Promtail config from the monitor-stack repo.
+      - ../agents/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      # Tail host syslog and auth logs.
+      - /var/log:/var/log:ro
+      # Tail the auditd JSON stream produced by agents/auditd-exporter.conf.
+      - /var/log/auditd-exporter:/var/log/auditd-exporter:ro
+      # Tail Docker container logs via the socket.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      loki:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9080/ready | grep -q ready || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - mb-proxy

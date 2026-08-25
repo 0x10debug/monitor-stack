@@ -1,6 +1,6 @@
 # VPS 自托管监控栈 — 可用性、性能与告警
 
-一套完整的 VPS 自托管监控方案，整合 **Uptime Kuma** 实现可用性监控、**Beszel** 实现性能指标采集、**CrowdSec** 集成实现安全事件追踪。通过 Docker 几分钟内完成部署，支持 Telegram、Discord、Email、Slack 多渠道告警，可从单一面板监控无限远程节点。无 SaaS 依赖，无月费 — 完全掌控你的 VPS 监控。
+一套完整的 VPS 自托管监控方案，整合 **Uptime Kuma** 实现可用性监控、**Beszel** 实现性能指标采集、**CrowdSec** 集成实现安全事件追踪、**Loki + Promtail** 实现日志聚合。通过 Docker 几分钟内完成部署，支持 Telegram、Discord、Email、Slack 多渠道告警，可从单一面板监控无限远程节点。无 SaaS 依赖，无月费 — 完全掌控你的 VPS 监控。
 
 > 属于 [0x10debug](https://github.com/0x10debug) VPS 工具套件的一部分。
 
@@ -11,6 +11,7 @@
 | [Uptime Kuma](https://github.com/louislam/uptime-kuma) | 可用性与运行状态监控 | 3001 | `/data/uptime-kuma` |
 | [Beszel Hub](https://github.com/henrygd/beszel) | 性能指标与系统资源监控 | 8090 | `/data/beszel` |
 | [CrowdSec](https://github.com/crowdsecurity/crowdsec) | 安全监控（集成） | — | 数据模板 |
+| [Loki](https://github.com/grafana/loki) + [Promtail](https://grafana.com/docs/loki/latest/send-data/promtail/) | 日志聚合（syslog、auth、auditd、docker） | 3100 | `/data/loki` |
 | 告警模板 | Telegram、Discord、Email、Slack | — | `/data/monitor-alerts` |
 | 状态页 | 自包含 HTML 状态页 | — | 可配置 |
 
@@ -95,6 +96,9 @@ mb monitor status-page
 # 查看 CrowdSec 安全集成说明
 mb monitor security-dashboard
 
+# 查看 Loki + Promtail 日志聚合状态与查询
+mb monitor logs
+
 # 更新所有服务到最新镜像
 mb monitor update
 
@@ -136,6 +140,15 @@ sudo ./mb monitor status-page
 
 运行 `mb monitor security-dashboard` 查看集成说明。
 
+## 日志聚合
+
+`compose/loki.yml` 提供了 Loki + Promtail 的 docker-compose 模板。Promtail 抓取主机 syslog、auth.log、auditd JSON 流（由 `agents/auditd-exporter.conf` 产生），以及可选的 Docker 容器日志，再推送到 Loki，可在 Grafana 中用 LogQL 查询。
+
+- **Loki** — 日志存储，端口 3100，数据位于 `/data/loki`，默认保留 14 天
+- **Promtail** — 日志采集器，含 regex + JSON pipeline 阶段与标签（`job`、`host`、`program`、`container`）
+
+运行 `mb monitor logs` 查看状态与查询示例。完整部署指南与 LogQL 示例见[日志聚合](docs/logging-stack.md)。
+
 ## 常见问题
 
 ### 可以用其他反向代理替代 Caddy 吗？
@@ -170,6 +183,7 @@ sudo tar -czf monitor-backup-$(date +%F).tar.gz /data/uptime-kuma /data/beszel /
 - [添加主机](docs/add-hosts.md) — 如何添加远程服务器进行监控
 - [告警配置](docs/alert-configuration.md) — 如何配置告警渠道
 - [安全监控](docs/security-monitoring.md) — 如何集成 CrowdSec
+- [日志聚合](docs/logging-stack.md) — 如何部署 Loki + Promtail 并用 LogQL 查询日志
 
 ## 相关仓库
 
