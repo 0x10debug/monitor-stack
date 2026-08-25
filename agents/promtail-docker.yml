@@ -1,0 +1,67 @@
+# promtail-docker.yml — Docker container log scraping config (example).
+#
+# Part of the 0x10debug monitor-stack:
+# https://github.com/0x10debug/monitor-stack
+#
+# This is an EXAMPLE scrape_configs block for collecting Docker container
+# logs via the Docker socket. It is NOT loaded by Promtail by default —
+# append its contents to the scrape_configs list in
+# agents/promtail-config.yml (or run Promtail with multiple -config.file
+# flags) to enable container log collection.
+#
+# Promtail discovers containers via the Docker socket, reads their JSON
+# log files from /var/lib/docker/containers, and labels each stream with
+# the container name and image. The compose/loki.yml template already
+# bind-mounts /var/run/docker.sock read-only into the promtail container.
+#
+# Deployment notes:
+#   1. Make sure /var/run/docker.sock is mounted in the promtail container
+#      (it is, by default, in compose/loki.yml).
+#   2. Append this block to agents/promtail-config.yml under scrape_configs,
+#      or merge it with a second -config.file argument.
+#   3. Recreate the promtail container:
+#        sudo docker compose -f compose/loki.yml up -d promtail
+#   4. Verify container logs appear in Loki with the LogQL query:
+#        {job="docker"}
+
+scrape_configs:
+  # ─── Docker container logs ─────────────────────────────────────────────
+  # Discovers running containers via the Docker socket and tails their JSON
+  # log files. The docker stage parses the {log, stream, time} envelope
+  # written by the Docker json-file driver.
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+        # Only collect containers that are actually running.
+        filters:
+          - name: status
+            values: [running]
+    relabel_configs:
+      # Use the container name (without the leading slash) as the label.
+      - source_labels: ["__meta_docker_container_name"]
+        regex: '/(.*)'
+        target_label: container
+      # Promote the image name to a label for filtering by image.
+      - source_labels: ["__meta_docker_container_image"]
+        target_label: image
+      # Keep only the short image name (drop the registry/tag).
+      - source_labels: ["image"]
+        regex: '([^/]+/)?([^:]+)(:.*)?'
+        replacement: '${2}'
+        target_label: image
+      # Set a stable job label so all container logs share one stream set.
+      - target_label: job
+        replacement: docker
+    pipeline_stages:
+      # Parse the Docker json-file log envelope.
+      - json:
+          expressions:
+            stream: stream
+            log: log
+      - labels:
+          stream:
+      - timestamp:
+          source: time
+          format: RFC3339Nano
+          location: UTC

@@ -1,0 +1,79 @@
+# loki-config.yml — Loki single-node configuration template.
+#
+# Part of the 0x10debug monitor-stack:
+# https://github.com/0x10debug/monitor-stack
+#
+# This file is the source of truth for the Loki container that ships in
+# compose/loki.yml. It is bind-mounted into the container at
+# /etc/loki/loki-config.yml.
+#
+# The configuration targets a single-binary "monolithic" deployment suitable
+# for a single VPS node. For larger fleets, split Loki into
+# microservices mode and point it at a shared object store (S3/MinIO).
+#
+# Deployment notes:
+#   1. Create the data directory before first run:
+#        sudo mkdir -p /data/loki
+#   2. Start the stack:
+#        sudo docker compose -f compose/loki.yml up -d
+#   3. Verify readiness:
+#        curl -s http://127.0.0.1:3100/ready
+#   4. Add Loki as a Grafana data source (see docs/logging-stack.md).
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+# Use the modern TSDB index format — better query performance and lower
+# memory footprint than the legacy boltdb-shipper.
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+# Retention: delete log streams older than the window below. Tune to match
+# your disk budget. Set to 0s to disable retention (not recommended). To
+# override at deploy time, run Loki with -config.expand-env=true and set the
+# LOKI_RETENTION environment variable.
+limits_config:
+  retention_period: 336h
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+  max_query_series: 1000
+  max_query_parallelism: 16
+
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true
+  delete_request_store: filesystem
+
+ruler:
+  storage:
+    type: local
+    local:
+      directory: /loki/rules
+  rule_path: /loki/rules-temp
+  alertmanager_url: ""
+  enable_api: true
+
+analytics:
+  reporting_enabled: false

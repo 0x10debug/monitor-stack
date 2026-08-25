@@ -1,0 +1,119 @@
+# promtail-config.yml — Promtail configuration template.
+#
+# Part of the 0x10debug monitor-stack:
+# https://github.com/0x10debug/monitor-stack
+#
+# This file is the source of truth for the Promtail container that ships in
+# compose/loki.yml. It is bind-mounted into the container at
+# /etc/promtail/promtail-config.yml.
+#
+# Promtail tails three log sources and ships them to Loki:
+#   1. /var/log/syslog      — general host logs (cron, daemons, kernel)
+#   2. /var/log/auth.log    — authentication logs (sshd, sudo, su)
+#   3. /var/log/auditd-exporter/auditd.jsonl — auditd JSON stream produced
+#      by agents/auditd-exporter.conf (kernel audit events)
+#
+# Docker container logs are scraped via the Docker socket using the
+# promtail-docker.yml scrape config — see that file for the container
+# discovery setup. To enable it, append its contents to the scrape_configs
+# list below (or use -config.file with multiple files via the
+# promtail -config.expand-env feature).
+#
+# Deployment notes:
+#   1. Ensure the host paths exist:
+#        sudo mkdir -p /data/promtail /var/log/auditd-exporter
+#   2. Start the stack:
+#        sudo docker compose -f compose/loki.yml up -d
+#   3. Verify Promtail is shipping:
+#        curl -s http://127.0.0.1:9080/metrics | grep promtail_targets_active
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  # Persist read offsets so logs are not re-shipped or lost on restart.
+  filename: /tmp/promtail/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+    # Batch and retry tuning for a single-node Loki.
+    batchwait: 1s
+    batchsize: 1048576
+    backoff_min: 500ms
+    backoff_max: 5m
+    retry_limit: 10
+
+scrape_configs:
+  # ─── Host syslog ───────────────────────────────────────────────────────
+  # General daemon/cron/kernel logs. Labels distinguish host vs container
+  # logs and let you filter by source in Grafana.
+  - job_name: syslog
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: syslog
+          source: host
+          __path__: /var/log/syslog
+    pipeline_stages:
+      # Parse the standard syslog prefix: "Mon DD HH:MM:SS host program[pid]: msg"
+      - regex:
+          expression: '^(?P<timestamp>\w{3}\s+\d+\s\d{2}:\d{2}:\d{2})\s+(?P<host>\S+)\s+(?P<program>[^:\[]+)(?:\[(?P<pid>\d+)\])?:\s(?P<message>.*)$'
+      - labels:
+          host:
+          program:
+      - timestamp:
+          source: timestamp
+          format: 'Jan _2 15:04:05'
+          location: UTC
+
+  # ─── Host auth.log ─────────────────────────────────────────────────────
+  # Authentication events: sshd logins, sudo, su, PAM. The program label
+  # lets you filter to sshd-only queries in Grafana.
+  - job_name: auth
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: auth
+          source: host
+          __path__: /var/log/auth.log
+    pipeline_stages:
+      - regex:
+          expression: '^(?P<timestamp>\w{3}\s+\d+\s\d{2}:\d{2}:\d{2})\s+(?P<host>\S+)\s+(?P<program>[^:\[]+)(?:\[(?P<pid>\d+)\])?:\s(?P<message>.*)$'
+      - labels:
+          host:
+          program:
+      - timestamp:
+          source: timestamp
+          format: 'Jan _2 15:04:05'
+          location: UTC
+
+  # ─── auditd JSON stream ────────────────────────────────────────────────
+  # Produced by agents/auditd-exporter.conf (rsyslog omfile target). Each
+  # line is a JSON object with timestamp/host/facility/program/message
+  # fields. The json stage parses them; the labels stage promotes host and
+  # program to labels for fast filtering.
+  - job_name: auditd
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: auditd
+          source: host
+          __path__: /var/log/auditd-exporter/auditd.jsonl
+    pipeline_stages:
+      - json:
+          expressions:
+            ts: timestamp
+            host: host
+            program: program
+            message: message
+      - labels:
+          host:
+          program:
+      - timestamp:
+          source: ts
+          format: RFC3339
+          location: UTC

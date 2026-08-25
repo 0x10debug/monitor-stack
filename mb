@@ -15,6 +15,7 @@
 #   alert list          List configured alert channels
 #   status-page         Deploy the status page
 #   security-dashboard  Show CrowdSec integration instructions
+#   logs                Show Loki + Promtail log aggregation instructions
 #   update              Update the monitoring stack
 #   help                Show this help message
 
@@ -46,6 +47,7 @@ COMMANDS:
     alert list          List all configured alert channels
     status-page         Deploy the public status page
     security-dashboard  Show CrowdSec security integration instructions
+    logs                Show Loki + Promtail log aggregation status and queries
     update              Pull latest images and restart the stack
     help                Show this help message
 
@@ -54,6 +56,7 @@ EXAMPLES:
     mb monitor add-host
     mb monitor alert setup
     mb monitor status-page
+    mb monitor logs
 
 DOCUMENTATION:
     https://github.com/0x10debug/monitor-stack#readme
@@ -310,6 +313,79 @@ To integrate CrowdSec with monitor-stack:
 EOF
 }
 
+# ─── logs ─────────────────────────────────────────────────────
+mb_monitor_logs() {
+    mb_check_docker
+    mb_step "Loki + Promtail Log Aggregation"
+
+    local compose_file="${MB_COMPOSE_DIR}/loki.yml"
+
+    if [[ ! -f "$compose_file" ]]; then
+        mb_die "Loki compose template not found: $compose_file"
+    fi
+
+    # Check if the logging stack is running.
+    local loki_running promtail_running
+    loki_running="$(docker ps --filter 'name=^loki$' --format '{{.Names}}' 2>/dev/null || true)"
+    promtail_running="$(docker ps --filter 'name=^promtail$' --format '{{.Names}}' 2>/dev/null || true)"
+
+    echo
+    if [[ -n "$loki_running" && -n "$promtail_running" ]]; then
+        mb_success "Loki + Promtail stack is running"
+        echo
+        mb_info "Container status:"
+        sudo docker compose -f "$compose_file" ps 2>/dev/null || \
+            docker ps --filter 'name=^loki$' --filter 'name=^promtail$' 2>/dev/null || true
+
+        echo
+        mb_info "Loki readiness:"
+        if curl -sf http://127.0.0.1:"${LOKI_PORT:-3100}"/ready >/dev/null 2>&1; then
+            mb_success "Loki is ready (http://127.0.0.1:${LOKI_PORT:-3100}/ready)"
+        else
+            mb_warn "Loki did not report ready on port ${LOKI_PORT:-3100}"
+        fi
+
+        echo
+        mb_info "Promtail active targets:"
+        curl -s http://127.0.0.1:9080/metrics 2>/dev/null \
+            | grep -E 'promtail_targets_active\{.*state=alive' \
+            | head -10 || mb_detail "could not read promtail metrics (is port 9080 reachable?)"
+    else
+        mb_warn "Loki + Promtail stack is not running."
+        mb_detail "Deploy it with:"
+        mb_detail "  sudo docker compose -f compose/loki.yml up -d"
+        mb_detail "  (or merge with the main stack: -f compose.yml -f loki.yml)"
+    fi
+
+    echo
+    cat <<'EOF'
+
+To query logs from Grafana:
+
+  1. Add Loki as a data source in Grafana:
+     Connections → Data sources → Add → Loki
+     URL: http://loki:3100
+
+  2. Open Explore, select the Loki source, and try these LogQL queries:
+
+     {job="syslog"}                              # all host syslog lines
+     {job="auth", program="sshd"}                # sshd auth events
+     {job="auth", program="sshd"} |= "Failed"    # failed SSH logins
+     {job="auditd"}                              # auditd kernel events
+     {job="docker", container="uptime-kuma"}     # a specific container
+
+  3. Metric queries (aggregations):
+
+     sum(rate({job="auth", program="sshd"} |= "Failed password" [5m])) by (host)
+     sum(count_over_time({job="docker"} [1h])) by (container)
+
+  Documentation:
+    https://github.com/0x10debug/monitor-stack/blob/main/docs/logging-stack.md
+    https://grafana.com/docs/loki/latest/logql/
+
+EOF
+}
+
 # ─── update ──────────────────────────────────────────────────
 mb_monitor_update() {
     mb_check_docker
@@ -363,6 +439,7 @@ mb_monitor() {
         alert)               mb_monitor_alert "$@" ;;
         status-page)         mb_monitor_status_page "$@" ;;
         security-dashboard)  mb_monitor_security_dashboard "$@" ;;
+        logs)                mb_monitor_logs "$@" ;;
         update)              mb_monitor_update "$@" ;;
         help|-h|--help)      mb_monitor_help ;;
         version|-v|--version) mb_version ;;
