@@ -1,0 +1,90 @@
+# blackbox.yml — Blackbox Exporter probe module configuration.
+#
+# Part of the 0x10debug monitor-stack:
+# https://github.com/0x10debug/monitor-stack
+#
+# This file is the source of truth for the Blackbox Exporter container that
+# ships in compose/blackbox.yml. It is bind-mounted into the container at
+# /etc/blackbox_exporter/blackbox.yml.
+#
+# Each module below defines a named probe profile. Prometheus selects a
+# module via the `module` query parameter when it scrapes the /probe
+# endpoint (see agents/prometheus-blackbox-targets.yml for the scrape
+# configs that reference these module names).
+#
+# Probe modules:
+#   http_2xx      — HTTP GET, expect 2xx, follow redirects, check SSL cert
+#   http_post_2xx — HTTP POST with a JSON body, expect 2xx
+#   tcp_connect   — raw TCP connect to verify a port is reachable
+#   icmp          — ICMP ping to verify a host is up at the network layer
+#
+# Deployment notes:
+#   1. Start the stack:
+#        sudo docker compose -f compose/blackbox.yml up -d
+#   2. Verify the exporter is healthy:
+#        curl -s http://127.0.0.1:9115/-/healthy
+#   3. Test a probe manually:
+#        curl -s 'http://127.0.0.1:9115/probe?target=https://example.com&module=http_2xx'
+#   4. Add the scrape + alert configs to your Prometheus instance (see
+#      agents/prometheus-blackbox-targets.yml and
+#      agents/prometheus-blackbox-rules.yml).
+
+modules:
+  # ─── HTTP probe (GET, expect 2xx) ───────────────────────────────────────
+  # Used for web endpoints and API health checks. Follows redirects, accepts
+  # any 2xx status code, and records the earliest SSL certificate expiry so
+  # the cert-expiry alert rule can fire before renewal is due.
+  http_2xx:
+    prober: http
+    timeout: 5s
+    http:
+      valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
+      valid_status_codes: []  # defaults to 2xx
+      method: GET
+      follow_redirects: true
+      fail_if_ssl: false
+      fail_if_not_ssl: false
+      preferred_ip_protocol: "ip4"
+      ip_protocol_fallback: true
+
+  # ─── HTTP probe (POST, expect 2xx) ──────────────────────────────────────
+  # Used for endpoints that require a POST to return a healthy response
+  # (e.g. API endpoints that reject GET). Sends an empty JSON body.
+  http_post_2xx:
+    prober: http
+    timeout: 5s
+    http:
+      valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
+      valid_status_codes: []  # defaults to 2xx
+      method: POST
+      headers:
+        Content-Type: application/json
+      body: '{}'
+      follow_redirects: true
+      fail_if_ssl: false
+      fail_if_not_ssl: false
+      preferred_ip_protocol: "ip4"
+      ip_protocol_fallback: true
+
+  # ─── TCP probe (port connectivity) ──────────────────────────────────────
+  # Verifies that a TCP port is accepting connections. Use it for database
+  # ports (5432, 3306), cache ports (6379), or any service that does not
+  # speak HTTP. The target is passed as host:port.
+  tcp_connect:
+    prober: tcp
+    timeout: 5s
+    tcp:
+      preferred_ip_protocol: "ip4"
+      ip_protocol_fallback: true
+
+  # ─── ICMP probe (ping) ──────────────────────────────────────────────────
+  # Verifies that a host responds to ICMP echo requests at the network
+  # layer. Use it for gateway/router reachability and host-up checks that do
+  # not depend on a specific service. Requires the NET_RAW capability, which
+  # compose/blackbox.yml grants to the container.
+  icmp:
+    prober: icmp
+    timeout: 5s
+    icmp:
+      preferred_ip_protocol: "ip4"
+      ip_protocol_fallback: true

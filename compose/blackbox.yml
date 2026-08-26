@@ -1,0 +1,60 @@
+# monitor-stack — Blackbox Exporter availability probing stack
+# Part of the 0x10debug VPS tool suite
+# https://github.com/0x10debug/monitor-stack
+#
+# This is a standalone docker-compose template for the Blackbox Exporter.
+# It is meant to be deployed alongside compose/compose.yml — either merged
+# with `docker compose -f compose.yml -f blackbox.yml up -d` or run on a
+# dedicated probing node. All images use pinned tags for reproducible
+# deployments.
+#
+# Blackbox Exporter performs active probing of external endpoints over
+# HTTP, TCP, and ICMP. Prometheus scrapes the exporter's /probe endpoint
+# (see agents/prometheus-blackbox-targets.yml) and records probe_success,
+# probe_duration_seconds, and probe_ssl_earliest_cert_expiry metrics that
+# drive the alert rules in agents/prometheus-blackbox-rules.yml.
+#
+# ICMP probing requires NET_RAW so the container can send raw ping packets.
+# On most hosts this works without additional host configuration; on some
+# kernels you may need to set sysctl net.ipv4.ping_group_range to allow the
+# container's GID.
+#
+# Required env vars (see compose/.env.example):
+#   none — Blackbox Exporter runs with sensible defaults; override the port
+#   via the optional BLACKBOX_PORT variable if needed.
+
+networks:
+  mb-proxy:
+    external: true
+    name: ${MB_PROXY_NETWORK:-mb-proxy}
+
+services:
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    container_name: blackbox-exporter
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/blackbox_exporter/blackbox.yml
+    volumes:
+      # Bind-mount the Blackbox Exporter config from the monitor-stack repo.
+      # The agents/blackbox.yml file is the source of truth for probe modules.
+      - ../agents/blackbox.yml:/etc/blackbox_exporter/blackbox.yml:ro
+    ports:
+      # Blackbox Exporter HTTP API — consumed by Prometheus via the /probe
+      # endpoint. Bind to localhost only; Prometheus reaches it over the
+      # shared Docker network. Expose on the host only if a remote
+      # Prometheus needs it.
+      - "127.0.0.1:${BLACKBOX_PORT:-9115}:9115"
+    # ICMP probing needs raw socket access. NET_RAW is the minimal capability
+    # required; do not grant NET_ADMIN unless you also need to manipulate
+    # routing tables.
+    cap_add:
+      - NET_RAW
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://localhost:9115/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - mb-proxy

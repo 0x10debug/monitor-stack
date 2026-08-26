@@ -1,0 +1,120 @@
+# prometheus-blackbox-targets.yml — Prometheus scrape configs for Blackbox.
+#
+# Part of the 0x10debug monitor-stack:
+# https://github.com/0x10debug/monitor-stack
+#
+# This file is an EXAMPLE. It shows how to wire the Blackbox Exporter into a
+# Prometheus instance. Append these scrape_configs to the scrape_configs
+# list in your prometheus.yml (or load it as an additional config file).
+#
+# The Blackbox Exporter exposes a /probe endpoint that takes a `target` and
+# a `module` query parameter. Prometheus scrapes /probe with the target
+# encoded as a query param, then relabels the address back to the exporter
+# so the scrape target is the exporter, not the endpoint. The original
+# endpoint is preserved on the `instance` label for alert routing and
+# Grafana panels.
+#
+# Replace the example targets below with your real endpoints. The exporter
+# is reached at http://blackbox-exporter:9115 when it runs on the shared
+# mb-proxy Docker network (see compose/blackbox.yml).
+
+scrape_configs:
+  # ─── HTTP probes (GET, expect 2xx) ──────────────────────────────────────
+  # Probes public web endpoints and internal API health checks. Each target
+  # is probed with the http_2xx module defined in agents/blackbox.yml.
+  - job_name: blackbox_http
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          # Public endpoints — replace with your domains.
+          - https://example.com
+          - https://monitor.example.com
+          - https://api.example.com/health
+          # Internal services reachable from the exporter container.
+          - http://uptime-kuma:3001
+          - http://beszel-hub:8090
+    relabel_configs:
+      # Pass the original target as the `target` query parameter.
+      - source_labels: [__address__]
+        target_label: __param_target
+      # Preserve the original endpoint on the `instance` label so alerts
+      # and Grafana panels show the probed URL, not the exporter address.
+      - source_labels: [__address__]
+        target_label: instance
+      # Record the module used for this probe.
+      - target_label: module
+        replacement: http_2xx
+      # Rewrite the scrape address to the Blackbox Exporter so Prometheus
+      # scrapes the exporter, not the endpoint directly.
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  # ─── HTTP probes (POST, expect 2xx) ─────────────────────────────────────
+  # Probes API endpoints that require a POST request to return a healthy
+  # response. Uses the http_post_2xx module.
+  - job_name: blackbox_http_post
+    metrics_path: /probe
+    params:
+      module: [http_post_2xx]
+    static_configs:
+      - targets:
+          # Replace with your POST endpoints.
+          - https://api.example.com/v1/status
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__address__]
+        target_label: instance
+      - target_label: module
+        replacement: http_post_2xx
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  # ─── TCP probes (port connectivity) ─────────────────────────────────────
+  # Verifies that database and cache ports are accepting connections. The
+  # target is host:port. Uses the tcp_connect module.
+  - job_name: blackbox_tcp
+    metrics_path: /probe
+    params:
+      module: [tcp_connect]
+    static_configs:
+      - targets:
+          # Database ports — replace with your real hosts.
+          - db.example.com:5432    # PostgreSQL
+          - db.example.com:3306    # MySQL
+          - cache.example.com:6379 # Redis
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__address__]
+        target_label: instance
+      - target_label: module
+        replacement: tcp_connect
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  # ─── ICMP probes (ping) ─────────────────────────────────────────────────
+  # Verifies network-layer reachability of gateways and hosts. Uses the icmp
+  # module, which requires the NET_RAW capability granted in
+  # compose/blackbox.yml.
+  - job_name: blackbox_icmp
+    metrics_path: /probe
+    params:
+      module: [icmp]
+    static_configs:
+      - targets:
+          # Gateway and host reachability — replace with your real hosts.
+          - gateway.example.com
+          - web-01.example.com
+          - 1.1.1.1
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__address__]
+        target_label: instance
+      - target_label: module
+        replacement: icmp
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
