@@ -1,0 +1,78 @@
+# prometheus-blackbox-rules.yml — Prometheus alert rules for Blackbox probes.
+#
+# Part of the 0x10debug monitor-stack:
+# https://github.com/0x10debug/monitor-stack
+#
+# These rules evaluate the metrics produced by the Blackbox Exporter scrape
+# jobs defined in agents/prometheus-blackbox-targets.yml. Load them into
+# Prometheus by adding this file to the rule_files list in your
+# prometheus.yml:
+#
+#   rule_files:
+#     - /etc/prometheus/prometheus-blackbox-rules.yml
+#
+# Alert summary/labels are written to be consumed by Alertmanager (or any
+# notification router). Tune the `for` durations and severity labels to
+# match your on-call expectations.
+
+groups:
+  - name: blackbox_availability
+    rules:
+      # ─── Service down ───────────────────────────────────────────────────
+      # Fires when a probe has failed continuously for 2 minutes. The 2m
+      # buffer absorbs transient network blips and single scrape failures
+      # without paging.
+      - alert: BlackboxProbeFailed
+        expr: probe_success == 0
+        for: 2m
+        labels:
+          severity: critical
+          category: availability
+        annotations:
+          summary: "Service down (probe failed): {{ $labels.instance }}"
+          description: "The Blackbox probe for {{ $labels.instance }} (module {{ $labels.module }}) has been failing for 2 minutes."
+
+      # ─── SSL certificate expiring soon ──────────────────────────────────
+      # probe_ssl_earliest_cert_expiry is a Unix timestamp (seconds). 7d
+      # gives you enough lead time to renew before the cert expires. Lower
+      # the threshold (e.g. 3d) for fast-issuing CAs like Let's Encrypt if
+      # you want fewer early warnings.
+      - alert: BlackboxSslCertificateExpiringSoon
+        expr: probe_ssl_earliest_cert_expiry - time() < 7 * 24 * 3600
+        for: 5m
+        labels:
+          severity: warning
+          category: availability
+        annotations:
+          summary: "SSL certificate expiring soon: {{ $labels.instance }}"
+          description: "The SSL certificate for {{ $labels.instance }} expires in less than 7 days. Renew it now."
+
+      # ─── High probe latency ─────────────────────────────────────────────
+      # Fires when a probe takes longer than 2 seconds. This catches slow
+      # endpoints before they time out (the module timeout is 5s). Tune the
+      # threshold to match your latency SLO.
+      - alert: BlackboxProbeHighLatency
+        expr: probe_duration_seconds > 2
+        for: 5m
+        labels:
+          severity: warning
+          category: availability
+        annotations:
+          summary: "High probe latency: {{ $labels.instance }}"
+          description: "The probe for {{ $labels.instance }} (module {{ $labels.module }}) is taking {{ $value }}s, above the 2s threshold."
+
+      # ─── HTTP status code anomaly ───────────────────────────────────────
+      # Fires when the probed endpoint returns a non-2xx status code even
+      # though the probe technically succeeded (e.g. a 503 from a
+      # maintenance page). probe_success is 1 for http_2xx modules only when
+      # the status code is in the accepted range, so this rule is a
+      # secondary signal for modules that accept broader status ranges.
+      - alert: BlackboxProbeHttpStatusAnomaly
+        expr: probe_http_status_code >= 400
+        for: 2m
+        labels:
+          severity: warning
+          category: availability
+        annotations:
+          summary: "HTTP status code anomaly: {{ $labels.instance }}"
+          description: "The probe for {{ $labels.instance }} returned HTTP status {{ $value }} (module {{ $labels.module }})."

@@ -16,6 +16,7 @@
 #   status-page         Deploy the status page
 #   security-dashboard  Show CrowdSec integration instructions
 #   logs                Show Loki + Promtail log aggregation instructions
+#   availability        Show Blackbox Exporter availability probing status
 #   update              Update the monitoring stack
 #   help                Show this help message
 
@@ -48,6 +49,7 @@ COMMANDS:
     status-page         Deploy the public status page
     security-dashboard  Show CrowdSec security integration instructions
     logs                Show Loki + Promtail log aggregation status and queries
+    availability        Show Blackbox Exporter availability probing status
     update              Pull latest images and restart the stack
     help                Show this help message
 
@@ -57,6 +59,7 @@ EXAMPLES:
     mb monitor alert setup
     mb monitor status-page
     mb monitor logs
+    mb monitor availability
 
 DOCUMENTATION:
     https://github.com/0x10debug/monitor-stack#readme
@@ -386,6 +389,98 @@ To query logs from Grafana:
 EOF
 }
 
+# ─── availability ─────────────────────────────────────────────
+mb_monitor_availability() {
+    mb_check_docker
+    mb_step "Blackbox Exporter Availability Probing"
+
+    local compose_file="${MB_COMPOSE_DIR}/blackbox.yml"
+
+    if [[ ! -f "$compose_file" ]]; then
+        mb_die "Blackbox compose template not found: $compose_file"
+    fi
+
+    # Check if the Blackbox Exporter is running.
+    local blackbox_running
+    blackbox_running="$(docker ps --filter 'name=^blackbox-exporter$' --format '{{.Names}}' 2>/dev/null || true)"
+
+    echo
+    if [[ -n "$blackbox_running" ]]; then
+        mb_success "Blackbox Exporter is running"
+        echo
+        mb_info "Container status:"
+        sudo docker compose -f "$compose_file" ps 2>/dev/null || \
+            docker ps --filter 'name=^blackbox-exporter$' 2>/dev/null || true
+
+        echo
+        mb_info "Exporter health:"
+        if curl -sf http://127.0.0.1:"${BLACKBOX_PORT:-9115}"/-/healthy >/dev/null 2>&1; then
+            mb_success "Blackbox Exporter is healthy (http://127.0.0.1:${BLACKBOX_PORT:-9115}/-/healthy)"
+        else
+            mb_warn "Blackbox Exporter did not report healthy on port ${BLACKBOX_PORT:-9115}"
+        fi
+
+        echo
+        mb_info "Sample HTTP probe (example.com, module http_2xx):"
+        local probe_out
+        probe_out="$(curl -s "http://127.0.0.1:${BLACKBOX_PORT:-9115}/probe?target=https://example.com&module=http_2xx" 2>/dev/null || true)"
+        if [[ -n "$probe_out" ]]; then
+            echo "$probe_out" | grep -E '^probe_(success|duration_seconds|http_status_code|ssl_earliest_cert_expiry)' | head -10 || \
+                mb_detail "probe returned no matching metrics"
+        else
+            mb_detail "could not read probe output (is port ${BLACKBOX_PORT:-9115} reachable?)"
+        fi
+    else
+        mb_warn "Blackbox Exporter is not running."
+        mb_detail "Deploy it with:"
+        mb_detail "  sudo docker compose -f compose/blackbox.yml up -d"
+        mb_detail "  (or merge with the main stack: -f compose.yml -f blackbox.yml)"
+    fi
+
+    echo
+    mb_info "Probe modules (agents/blackbox.yml):"
+    mb_detail "http_2xx      — HTTP GET, expect 2xx, follow redirects, SSL cert check"
+    mb_detail "http_post_2xx — HTTP POST with JSON body, expect 2xx"
+    mb_detail "tcp_connect   — TCP port connectivity (databases, caches)"
+    mb_detail "icmp          — ICMP ping (gateway/host reachability)"
+
+    echo
+    cat <<'EOF'
+
+To wire the exporter into Prometheus:
+
+  1. Append the scrape configs from agents/prometheus-blackbox-targets.yml
+     to the scrape_configs list in your prometheus.yml.
+
+  2. Add the alert rules to rule_files in prometheus.yml:
+       rule_files:
+         - /etc/prometheus/prometheus-blackbox-rules.yml
+
+  3. Reload Prometheus:
+       sudo docker kill -s SIGHUP prometheus
+
+  4. Confirm targets are UP in Prometheus → Status → Targets
+     (jobs: blackbox_http, blackbox_http_post, blackbox_tcp, blackbox_icmp).
+
+  5. In Grafana, add Prometheus as a data source and build panels from:
+       probe_success                          — service up/down
+       probe_duration_seconds                 — probe latency
+       probe_ssl_earliest_cert_expiry         — SSL cert expiry (Unix timestamp)
+       probe_http_status_code                 — HTTP status code
+
+  Alert rules (agents/prometheus-blackbox-rules.yml):
+    BlackboxProbeFailed              — probe_success == 0 for 2m  (critical)
+    BlackboxSslCertificateExpiringSoon — cert < 7d              (warning)
+    BlackboxProbeHighLatency         — probe > 2s for 5m         (warning)
+    BlackboxProbeHttpStatusAnomaly   — status >= 400 for 2m      (warning)
+
+  Documentation:
+    https://github.com/0x10debug/monitor-stack/blob/main/docs/availability-monitoring.md
+    https://github.com/prometheus/blackbox_exporter
+
+EOF
+}
+
 # ─── update ──────────────────────────────────────────────────
 mb_monitor_update() {
     mb_check_docker
@@ -440,6 +535,7 @@ mb_monitor() {
         status-page)         mb_monitor_status_page "$@" ;;
         security-dashboard)  mb_monitor_security_dashboard "$@" ;;
         logs)                mb_monitor_logs "$@" ;;
+        availability)        mb_monitor_availability "$@" ;;
         update)              mb_monitor_update "$@" ;;
         help|-h|--help)      mb_monitor_help ;;
         version|-v|--version) mb_version ;;
