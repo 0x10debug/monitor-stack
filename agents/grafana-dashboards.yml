@@ -1,0 +1,32 @@
+# Grafana dashboard provisioning — monitor-stack
+# Part of the 0x10debug VPS tool suite
+# https://github.com/0x10debug/monitor-stack
+#
+# This file is consumed by Grafana's provisioning system. Bind-mount it to
+# /etc/grafana/provisioning/dashboards/dashboards.yml inside the Grafana
+# container (see compose/grafana.yml). Grafana will scan the `path` folder
+# for *.json dashboard files and load them automatically on startup and
+# on file changes (hot reload).
+#
+# The dashboards/ directory in this repo contains four overview dashboards:
+#   vps-overview.json         — system metrics (node_exporter)
+#   security-overview.json    — CrowdSec + auditd + Falco + SSH (Loki)
+#   availability-overview.json — Blackbox Exporter probes
+#   logs-overview.json        — Loki log volume + Promtail status
+#
+# To add custom dashboards, drop additional *.json files into the
+# dashboards/ directory and restart Grafana (or let provisioning hot-reload).
+
+apiVersion: 1
+
+providers:
+  - name: monitor-stack
+    orgId: 1
+    folder: monitor-stack
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

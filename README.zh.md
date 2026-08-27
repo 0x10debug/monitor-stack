@@ -1,6 +1,6 @@
 # VPS 自托管监控栈 — 可用性、性能与告警
 
-一套完整的 VPS 自托管监控方案，整合 **Uptime Kuma** 实现可用性监控、**Beszel** 实现性能指标采集、**CrowdSec** 集成实现安全事件追踪、**Loki + Promtail** 实现日志聚合、**Blackbox Exporter** 实现端点主动探测（HTTP/TCP/ICMP）并附带 Prometheus 告警规则。通过 Docker 几分钟内完成部署，支持 Telegram、Discord、Email、Slack 多渠道告警，可从单一面板监控无限远程节点。无 SaaS 依赖，无月费 — 完全掌控你的 VPS 监控。
+一套完整的 VPS 自托管监控方案，整合 **Uptime Kuma** 实现可用性监控、**Beszel** 实现性能指标采集、**CrowdSec** 集成实现安全事件追踪、**Loki + Promtail** 实现日志聚合、**Blackbox Exporter** 实现端点主动探测（HTTP/TCP/ICMP）并附带 Prometheus 告警规则，以及 **Grafana** 仪表盘模板可视化系统、安全、可用性和日志指标。通过 Docker 几分钟内完成部署，支持 Telegram、Discord、Email、Slack 多渠道告警，可从单一面板监控无限远程节点。无 SaaS 依赖，无月费 — 完全掌控你的 VPS 监控。
 
 > 属于 [0x10debug](https://github.com/0x10debug) VPS 工具套件的一部分。
 
@@ -13,6 +13,7 @@
 | [CrowdSec](https://github.com/crowdsecurity/crowdsec) | 安全监控（集成） | — | 数据模板 |
 | [Loki](https://github.com/grafana/loki) + [Promtail](https://grafana.com/docs/loki/latest/send-data/promtail/) | 日志聚合（syslog、auth、auditd、docker） | 3100 | `/data/loki` |
 | [Blackbox Exporter](https://github.com/prometheus/blackbox_exporter) | 可用性探测（HTTP/TCP/ICMP）+ Prometheus 告警规则 | 9115 | 仅配置 |
+| [Grafana](https://github.com/grafana/grafana) | 仪表盘模板：VPS、安全、可用性、日志 | 3000 | `/data/grafana` |
 | 告警模板 | Telegram、Discord、Email、Slack | — | `/data/monitor-alerts` |
 | 状态页 | 自包含 HTML 状态页 | — | 可配置 |
 
@@ -163,6 +164,17 @@ sudo ./mb monitor status-page
 - **告警规则** — `agents/prometheus-blackbox-rules.yml`：服务宕机（2m）、SSL 证书即将过期（<7d）、高延迟（>2s）、HTTP 状态码异常（≥400）
 
 运行 `mb monitor availability` 查看状态与集成说明。完整部署指南、Prometheus 接入与 Grafana 仪表盘配置见[可用性监控](docs/availability-monitoring.md)。
+
+## Grafana 仪表盘
+
+`dashboards/` 目录提供四套 Grafana 仪表盘 JSON 模板，`agents/` 提供自动 provisioning 配置，`compose/grafana.yml` 提供 docker-compose 模板。Grafana 启动时自动加载仪表盘和数据源（Prometheus + Loki），无需手动 UI 配置。
+
+- **VPS 总览** (`vps-overview.json`) — CPU、内存、磁盘、网络、负载、进程、Docker 容器（Prometheus / node_exporter）
+- **安全总览** (`security-overview.json`) — CrowdSec decisions/alerts、auditd 审计、Falco 事件、SSH 登录（Loki + Prometheus）
+- **可用性总览** (`availability-overview.json`) — HTTP/TCP/ICMP 探针、SSL 证书过期、响应时间、丢包率（Prometheus / blackbox_exporter）
+- **日志总览** (`logs-overview.json`) — 日志量趋势、错误/警告计数、按服务分组速率、Promtail 状态（Loki + Prometheus）
+
+运行 `mb monitor dashboards` 查看 Grafana 状态与导入指引。面板详情、自定义指南和 API 导入示例见[仪表盘说明](dashboards/README.md)。
 
 ## 常见问题
 

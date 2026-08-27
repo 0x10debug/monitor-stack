@@ -17,6 +17,7 @@
 #   security-dashboard  Show CrowdSec integration instructions
 #   logs                Show Loki + Promtail log aggregation instructions
 #   availability        Show Blackbox Exporter availability probing status
+#   dashboards          Show Grafana dashboard status and import instructions
 #   update              Update the monitoring stack
 #   help                Show this help message
 
@@ -50,6 +51,7 @@ COMMANDS:
     security-dashboard  Show CrowdSec security integration instructions
     logs                Show Loki + Promtail log aggregation status and queries
     availability        Show Blackbox Exporter availability probing status
+    dashboards          Show Grafana dashboard status and import instructions
     update              Pull latest images and restart the stack
     help                Show this help message
 
@@ -60,6 +62,7 @@ EXAMPLES:
     mb monitor status-page
     mb monitor logs
     mb monitor availability
+    mb monitor dashboards
 
 DOCUMENTATION:
     https://github.com/0x10debug/monitor-stack#readme
@@ -481,6 +484,112 @@ To wire the exporter into Prometheus:
 EOF
 }
 
+# ─── dashboards ──────────────────────────────────────────────
+mb_monitor_dashboards() {
+    mb_check_docker
+    mb_step "Grafana Dashboard Templates"
+
+    local compose_file="${MB_COMPOSE_DIR}/grafana.yml"
+    local dashboards_dir="${MB_MONITOR_DIR}/dashboards"
+
+    if [[ ! -f "$compose_file" ]]; then
+        mb_die "Grafana compose template not found: $compose_file"
+    fi
+
+    # Check if Grafana is running.
+    local grafana_running
+    grafana_running="$(docker ps --filter 'name=^grafana$' --format '{{.Names}}' 2>/dev/null || true)"
+
+    echo
+    if [[ -n "$grafana_running" ]]; then
+        mb_success "Grafana is running"
+        echo
+        mb_info "Container status:"
+        sudo docker compose -f "$compose_file" ps 2>/dev/null || \
+            docker ps --filter 'name=^grafana$' 2>/dev/null || true
+
+        echo
+        mb_info "Grafana health:"
+        if curl -sf http://127.0.0.1:"${GRAFANA_PORT:-3000}"/api/health >/dev/null 2>&1; then
+            mb_success "Grafana is healthy (http://127.0.0.1:${GRAFANA_PORT:-3000}/api/health)"
+        else
+            mb_warn "Grafana did not report healthy on port ${GRAFANA_PORT:-3000}"
+        fi
+
+        echo
+        mb_info "Provisioned dashboards:"
+        local ds_dir="$dashboards_dir"
+        if [[ -d "$ds_dir" ]]; then
+            for f in "$ds_dir"/*-overview.json; do
+                [[ -f "$f" ]] || continue
+                local title
+                title="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('title','?'))" "$f" 2>/dev/null || echo "?")"
+                mb_detail "$(basename "$f")  — $title"
+            done
+        fi
+    else
+        mb_warn "Grafana is not running."
+        mb_detail "Deploy it with:"
+        mb_detail "  sudo docker compose -f compose/grafana.yml up -d"
+        mb_detail "  (or merge with the main stack: -f compose.yml -f grafana.yml)"
+        mb_detail "Set GF_SECURITY_ADMIN_PASSWORD in compose/.env first."
+    fi
+
+    echo
+    mb_info "Dashboard templates (dashboards/):"
+    mb_detail "vps-overview.json         — CPU/内存/磁盘/网络/负载/进程/Docker (Prometheus)"
+    mb_detail "security-overview.json    — CrowdSec/auditd/Falco/SSH (Loki + Prometheus)"
+    mb_detail "availability-overview.json — HTTP/TCP/ICMP 探针/SSL/延迟 (Prometheus)"
+    mb_detail "logs-overview.json        — 日志量/错误/警告/Promtail (Loki + Prometheus)"
+
+    echo
+    mb_info "Data sources (agents/grafana-datasources.yml):"
+    mb_detail "Prometheus  — uid: prometheus  — http://prometheus:9090"
+    mb_detail "Loki        — uid: loki        — http://loki:3100"
+
+    echo
+    cat <<'EOF'
+
+Auto-provisioning (recommended):
+
+  Grafana loads dashboards and data sources automatically on startup via
+  provisioning. No manual UI steps needed.
+
+  1. Set the admin password:
+       echo "GF_SECURITY_ADMIN_PASSWORD=your-secret" >> compose/.env
+
+  2. Start Grafana:
+       sudo docker compose -f compose/grafana.yml up -d
+
+  3. Open http://localhost:3000 and log in.
+     Dashboards appear under the "monitor-stack" folder automatically.
+
+Manual import (alternative):
+
+  1. Log in to Grafana → Dashboards → New → Import.
+  2. Upload a JSON file from dashboards/ (e.g., vps-overview.json).
+  3. Select the Prometheus / Loki data source when prompted.
+  4. Click Import.
+
+  Or via API:
+    curl -u admin:admin -H "Content-Type: application/json" \
+      -X POST http://localhost:3000/api/dashboards/db \
+      -d @dashboards/vps-overview.json
+
+Customization:
+
+  - Edit dashboards/*.json and restart Grafana (or let provisioning reload).
+  - Add new dashboards by dropping *.json into dashboards/.
+  - Change data source UIDs in agents/grafana-datasources.yml and update
+    the ${DS_PROMETHEUS} / ${DS_LOKI} variables in dashboard JSON.
+
+Documentation:
+    https://github.com/0x10debug/monitor-stack/blob/main/dashboards/README.md
+    https://grafana.com/docs/grafana/latest/dashboards/
+
+EOF
+}
+
 # ─── update ──────────────────────────────────────────────────
 mb_monitor_update() {
     mb_check_docker
@@ -536,6 +645,7 @@ mb_monitor() {
         security-dashboard)  mb_monitor_security_dashboard "$@" ;;
         logs)                mb_monitor_logs "$@" ;;
         availability)        mb_monitor_availability "$@" ;;
+        dashboards)          mb_monitor_dashboards "$@" ;;
         update)              mb_monitor_update "$@" ;;
         help|-h|--help)      mb_monitor_help ;;
         version|-v|--version) mb_version ;;

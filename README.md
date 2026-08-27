@@ -1,6 +1,6 @@
 # Self-Hosted Monitoring Stack for VPS — Uptime, Metrics & Alerts
 
-A complete self-hosted monitoring stack for VPS servers, combining **Uptime Kuma** for uptime and availability monitoring, **Beszel** for performance metrics, **CrowdSec** integration for security event tracking, **Loki + Promtail** for log aggregation, and **Blackbox Exporter** for active endpoint probing (HTTP/TCP/ICMP) with Prometheus alert rules. Deploy everything with Docker in minutes, configure alerts via Telegram, Discord, Email, or Slack, and monitor unlimited remote nodes from a single dashboard. No SaaS dependencies, no monthly fees — full control over your VPS monitoring.
+A complete self-hosted monitoring stack for VPS servers, combining **Uptime Kuma** for uptime and availability monitoring, **Beszel** for performance metrics, **CrowdSec** integration for security event tracking, **Loki + Promtail** for log aggregation, **Blackbox Exporter** for active endpoint probing (HTTP/TCP/ICMP) with Prometheus alert rules, and **Grafana** dashboard templates for visualizing system, security, availability, and log metrics. Deploy everything with Docker in minutes, configure alerts via Telegram, Discord, Email, or Slack, and monitor unlimited remote nodes from a single dashboard. No SaaS dependencies, no monthly fees — full control over your VPS monitoring.
 
 > Part of the [0x10debug](https://github.com/0x10debug) VPS tool suite.
 
@@ -13,6 +13,7 @@ A complete self-hosted monitoring stack for VPS servers, combining **Uptime Kuma
 | [CrowdSec](https://github.com/crowdsecurity/crowdsec) | Security monitoring (integration) | — | schema template |
 | [Loki](https://github.com/grafana/loki) + [Promtail](https://grafana.com/docs/loki/latest/send-data/promtail/) | Log aggregation (syslog, auth, auditd, docker) | 3100 | `/data/loki` |
 | [Blackbox Exporter](https://github.com/prometheus/blackbox_exporter) | Availability probing (HTTP/TCP/ICMP) + Prometheus alert rules | 9115 | config-only |
+| [Grafana](https://github.com/grafana/grafana) | Dashboard templates: VPS, security, availability, logs | 3000 | `/data/grafana` |
 | Alert templates | Telegram, Discord, Email, Slack | — | `/data/monitor-alerts` |
 | Status page | Self-contained HTML status page | — | configurable |
 
@@ -163,6 +164,17 @@ A Blackbox Exporter docker-compose template ships at `compose/blackbox.yml`. It 
 - **Alert rules** — `agents/prometheus-blackbox-rules.yml`: service down (2m), SSL cert expiring (<7d), high latency (>2s), HTTP status anomaly (≥400)
 
 Run `mb monitor availability` for status and integration instructions. See [Availability Monitoring](docs/availability-monitoring.md) for the full deployment guide, Prometheus wiring, and Grafana dashboard setup.
+
+## Grafana Dashboards
+
+Four Grafana dashboard JSON templates ship in `dashboards/`, plus auto-provisioning configs in `agents/` and a docker-compose template in `compose/grafana.yml`. Grafana loads dashboards and data sources (Prometheus + Loki) automatically on startup — no manual UI configuration needed.
+
+- **VPS 总览** (`vps-overview.json`) — CPU、内存、磁盘、网络、负载、进程、Docker 容器 (Prometheus / node_exporter)
+- **安全总览** (`security-overview.json`) — CrowdSec decisions/alerts、auditd 审计、Falco 事件、SSH 登录 (Loki + Prometheus)
+- **可用性总览** (`availability-overview.json`) — HTTP/TCP/ICMP 探针、SSL 证书过期、响应时间、丢包率 (Prometheus / blackbox_exporter)
+- **日志总览** (`logs-overview.json`) — 日志量趋势、错误/警告计数、按服务分组速率、Promtail 状态 (Loki + Prometheus)
+
+Run `mb monitor dashboards` for Grafana status and import instructions. See [Dashboards README](dashboards/README.md) for panel details, customization guide, and API import examples.
 
 ## FAQ
 

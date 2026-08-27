@@ -1,0 +1,40 @@
+# Grafana data source provisioning — monitor-stack
+# Part of the 0x10debug VPS tool suite
+# https://github.com/0x10debug/monitor-stack
+#
+# This file is consumed by Grafana's provisioning system. Bind-mount it to
+# /etc/grafana/provisioning/datasources/datasources.yml inside the Grafana
+# container (see compose/grafana.yml). Grafana will auto-create the data
+# sources on startup — no manual UI configuration needed.
+#
+# The `uid` fields below must match the datasource variables referenced in
+# the dashboard JSON templates (${DS_PROMETHEUS} / ${DS_LOKI}). Change both
+# the uid here and in the dashboards if you need custom UIDs.
+#
+# Prometheus is expected to scrape node_exporter, blackbox_exporter,
+# crowdsec exporter, and promtail metrics. Loki is expected to receive
+# logs from promtail (syslog, auth, auditd, docker, crowdsec, falco).
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+    jsonData:
+      timeInterval: 15s
+      httpMethod: POST
+
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    isDefault: false
+    editable: true
+    jsonData:
+      maxLines: 1000

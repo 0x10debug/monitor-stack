@@ -1,0 +1,68 @@
+# monitor-stack — Grafana visualization stack
+# Part of the 0x10debug VPS tool suite
+# https://github.com/0x10debug/monitor-stack
+#
+# This is a standalone docker-compose template for Grafana OSS. It is meant
+# to be deployed alongside compose/compose.yml — either merged with `docker
+# compose -f compose.yml -f grafana.yml up -d` or run on a dedicated
+# visualization node. All images use pinned tags for reproducible
+# deployments.
+#
+# Grafana serves the dashboard JSON templates from dashboards/ and
+# auto-provisions the Prometheus + Loki data sources via the YAML files in
+# agents/. No manual UI configuration is required on first boot — dashboards
+# and data sources appear automatically.
+#
+# Data is persisted under /data/grafana so users, preferences, and
+# non-provisioned dashboards survive container recreations.
+#
+# Required env vars (see compose/.env.example):
+#   GF_SECURITY_ADMIN_PASSWORD — initial admin password (set once on first
+#   boot; change via Grafana UI afterwards). If unset, defaults to "admin".
+
+networks:
+  mb-proxy:
+    external: true
+    name: ${MB_PROXY_NETWORK:-mb-proxy}
+
+services:
+  grafana:
+    image: grafana/grafana-oss:11.3.0
+    container_name: grafana
+    restart: unless-stopped
+    environment:
+      # Admin credentials. The password is only used on first boot; after
+      # that it is stored in the Grafana database and must be changed via
+      # the UI.
+      - GF_SECURITY_ADMIN_USER=${GF_SECURITY_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD:?GF_SECURITY_ADMIN_PASSWORD is required}
+      # Allow embedding dashboards in iframes (e.g., status pages).
+      - GF_SECURITY_ALLOW_EMBEDDING=true
+      # Disable anonymous access — require login.
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      # Auto-assign users to the default org on first login.
+      - GF_USERS_ALLOW_SIGN_UP=false
+      # Serve Grafana behind a reverse proxy (Caddy/nginx) without port.
+      - GF_SERVER_ROOT_URL=${MONITOR_DOMAIN:-http://localhost:3000}
+    volumes:
+      # Persist Grafana database, users, and non-provisioned dashboards.
+      - /data/grafana:/var/lib/grafana
+      # Auto-provision Prometheus + Loki data sources.
+      - ../agents/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      # Auto-provision dashboard loading from the dashboards/ directory.
+      - ../agents/grafana-dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+      # Bind-mount the dashboard JSON templates — provisioning scans this
+      # path (set in grafana-dashboards.yml) and loads all *.json files.
+      - ../dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      # Grafana HTTP UI — bind to localhost only; put a reverse proxy
+      # (Caddy/nginx) in front for TLS and domain routing.
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health | grep -q 'ok' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - mb-proxy
