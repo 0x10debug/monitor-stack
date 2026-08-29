@@ -1,0 +1,158 @@
+{{/*
+  alert-templates.tmpl — Go templates for Alertmanager notification messages.
+
+  Part of the 0x10debug monitor-stack:
+  https://github.com/0x10debug/monitor-stack
+
+  Loaded by Alertmanager via --config.templates-files (set in
+  compose/alertmanager.yml). These templates render the alert payload into
+  platform-specific message formats:
+
+    - Telegram: Markdown (sendMessage parse_mode=MarkdownV2)
+    - Slack:    Block Kit / attachment fields (native slack_config)
+    - Discord:  Embed-style text (via Slack-compat webhook)
+
+  Common fields available in every template:
+    .Alerts               — list of firing alerts
+    .Resolved             — list of resolved alerts
+    .Status               — "firing" or "resolved"
+    .Receiver             — receiver name
+    .GroupLabels          — group labels (alertname, service, severity)
+    .CommonLabels         — labels shared by all alerts in the group
+    .CommonAnnotations    — annotations shared by all alerts in the group
+    .ExternalURL          — Alertmanager external URL
+
+  Per-alert fields (inside range .Alerts):
+    .Labels.alertname     — alert rule name
+    .Labels.instance      — target instance
+    .Labels.service       — service name
+    .Labels.severity      — critical / warning / info
+    .Annotations.summary  — short summary
+    .Annotations.description — detailed description
+    .Annotations.runbook_url — runbook link (optional, per alert)
+    .StartsAt             — alert start time
+    .EndsAt               — alert end time (for resolved)
+    .Status               — "firing" or "resolved"
+
+  Reference:
+    https://prometheus.io/docs/alerting/latest/notifications/
+    https://www.prometheus.io/docs/alerting/latest/template_examples/
+*/}}
+
+{{/* ════════════════════════════════════════════════════════════════
+   Shared helpers
+   ════════════════════════════════════════════════════════════════ */}}
+
+{{/* runbook_url — fall back to a default runbook if the alert does not
+   define one in its annotations. */}}
+{{ define "runbook.url" }}{{ .Annotations.runbook_url | default "https://github.com/0x10debug/monitor-stack/blob/main/docs/alerting.md#runbook" }}{{ end }}
+
+{{/* silence_url — deep link to the Alertmanager silence creation form,
+   pre-filled with the alert's group labels. */}}
+{{ define "silence.url" }}{{ .ExternalURL }}/#/silences/new?filter=%7B%7D{{ end }}
+
+{{/* severity_emoji — map severity to an emoji for quick visual scanning. */}}
+{{ define "severity.emoji" }}{{ if eq .Status "resolved" }}✅{{ else if eq .CommonLabels.severity "critical" }}🔴{{ else if eq .CommonLabels.severity "warning" }}🟡{{ else }}🔵{{ end }}{{ end }}
+
+{{/* status_text — human-readable status. */}}
+{{ define "status.text" }}{{ if eq .Status "resolved" }}RESOLVED{{ else }}FIRING{{ end }}{{ end }}
+
+
+{{/* ════════════════════════════════════════════════════════════════
+   Telegram templates (Markdown format)
+   ════════════════════════════════════════════════════════════════ */}}
+
+{{/* telegram_default — full message body for the Telegram relay. */}}
+{{ define "telegram_default" }}{{ template "telegram.title" . }}
+
+{{ template "telegram.alerts" . }}
+{{ if .Resolved }}
+*Resolved:*
+{{ range .Resolved }}  ✅ {{ .Labels.alertname }} — {{ .Labels.instance }} ({{ .EndsAt.Format "2006-01-02 15:04:05" }})
+{{ end }}{{ end }}
+{{ template "telegram.footer" . }}{{ end }}
+
+{{/* telegram.title — first line of the message: emoji + status + alertname. */}}
+{{ define "telegram.title" }}{{ template "severity.emoji" . }} *{{ template "status.text" . }}* — {{ .CommonLabels.alertname | toUpper }}
+*Service:* {{ .CommonLabels.service | default "unknown" }}
+*Severity:* {{ .CommonLabels.severity | default "unknown" }}{{ end }}
+
+{{/* telegram.alerts — per-alert detail block. */}}
+{{ define "telegram.alerts" }}{{ if .Alerts }}
+*Firing alerts ({{ .Alerts | len }}):*
+{{ range .Alerts }}  🔥 *{{ .Labels.alertname }}*
+  _Instance:_ {{ .Labels.instance | default "n/a" }}
+  _Summary:_ {{ .Annotations.summary | default "no summary" }}
+  _Started:_ {{ .StartsAt.Format "2006-01-02 15:04:05 MST" }}
+  _Description:_ {{ .Annotations.description | default "no description" }}
+{{ end }}{{ end }}{{ end }}
+
+{{/* telegram.footer — runbook link and Alertmanager UI link. */}}
+{{ define "telegram.footer" }}📖 _Runbook:_ {{ template "runbook.url" . }}
+🔔 _Silence:_ {{ template "silence.url" . }}
+🖥 _Alertmanager:_ {{ .ExternalURL }}{{ end }}
+
+
+{{/* ════════════════════════════════════════════════════════════════
+   Slack templates (attachment format — native slack_config)
+   ════════════════════════════════════════════════════════════════ */}}
+
+{{/* slack.title — the attachment title line. */}}
+{{ define "slack.title" }}{{ template "severity.emoji" . }} [{{ .CommonLabels.severity | default "unknown" | toUpper }}] {{ .CommonLabels.alertname }} — {{ template "status.text" . }}{{ end }}
+
+{{/* slack.text — the attachment body text with per-alert details. */}}
+{{ define "slack.text" }}{{ if eq .Status "resolved" }}All alerts in this group have been resolved.{{ else }}{{ range .Alerts }}• *{{ .Labels.alertname }}* on `{{ .Labels.instance | default "n/a" }}`
+  {{ .Annotations.summary | default "no summary" }}
+  Started: {{ .StartsAt.Format "2006-01-02 15:04:05 MST" }}
+{{ end }}{{ end }}{{ end }}
+
+{{/* slack.color — attachment colour bar: red/yellow/green by status+severity. */}}
+{{ define "slack.color" }}{{ if eq .Status "resolved" }}#36A64F{{ else if eq .CommonLabels.severity "critical" }}#FF0000{{ else if eq .CommonLabels.severity "warning" }}#FFFF00{{ else }}#00BFFF{{ end }}{{ end }}
+
+
+{{/* ════════════════════════════════════════════════════════════════
+   Discord templates (embed-style text via Slack-compat webhook)
+   ════════════════════════════════════════════════════════════════ */}}
+
+{{/* discord.title — embed title. */}}
+{{ define "discord.title" }}{{ template "severity.emoji" . }} [{{ .CommonLabels.severity | default "unknown" | toUpper }}] {{ .CommonLabels.alertname }} — {{ template "status.text" . }}{{ end }}
+
+{{/* discord.text — embed description (Discord markdown). */}}
+{{ define "discord.text" }}{{ if eq .Status "resolved" }}✅ **Resolved** — all alerts in this group are cleared.{{ else }}{{ range .Alerts }}**{{ .Labels.alertname }}** on `{{ .Labels.instance | default "n/a" }}`
+> {{ .Annotations.summary | default "no summary" }}
+`Started:` {{ .StartsAt.Format "2006-01-02 15:04:05 MST" }}
+{{ end }}{{ end }}
+📖 **Runbook:** {{ template "runbook.url" . }}{{ end }}
+
+{{/* discord.color — embed colour as a hex integer (Discord uses decimal,
+   but Slack-compat mode accepts hex strings). */}}
+{{ define "discord.color" }}{{ if eq .Status "resolved" }}#00FF00{{ else if eq .CommonLabels.severity "critical" }}#FF0000{{ else if eq .CommonLabels.severity "warning" }}#FFFF00{{ else }}#00BFFF{{ end }}{{ end }}
+
+
+{{/* ════════════════════════════════════════════════════════════════
+   Email templates (plain text — for operators who add an email receiver)
+   ════════════════════════════════════════════════════════════════ */}}
+
+{{/* email.subject — subject line for email notifications. */}}
+{{ define "email.subject" }}[{{ .CommonLabels.severity | default "unknown" | toUpper }}] {{ .CommonLabels.alertname }} — {{ template "status.text" . }}{{ end }}
+
+{{/* email.body — plain-text body. */}}
+{{ define "email.body" }}Status: {{ template "status.text" . }}
+Alert: {{ .CommonLabels.alertname }}
+Service: {{ .CommonLabels.service | default "unknown" }}
+Severity: {{ .CommonLabels.severity | default "unknown" }}
+
+Firing alerts ({{ .Alerts | len }}):
+{{ range .Alerts }}  - {{ .Labels.alertname }} on {{ .Labels.instance | default "n/a" }}
+    Summary: {{ .Annotations.summary | default "no summary" }}
+    Started: {{ .StartsAt.Format "2006-01-02 15:04:05 MST" }}
+{{ end }}
+{{ if .Resolved }}
+Resolved alerts ({{ .Resolved | len }}):
+{{ range .Resolved }}  - {{ .Labels.alertname }} on {{ .Labels.instance | default "n/a" }}
+    Ended: {{ .EndsAt.Format "2006-01-02 15:04:05 MST" }}
+{{ end }}{{ end }}
+
+Runbook: {{ template "runbook.url" . }}
+Alertmanager: {{ .ExternalURL }}
+{{ end }}

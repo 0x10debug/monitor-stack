@@ -1,6 +1,6 @@
 # VPS 自托管监控栈 — 可用性、性能与告警
 
-一套完整的 VPS 自托管监控方案，整合 **Uptime Kuma** 实现可用性监控、**Beszel** 实现性能指标采集、**CrowdSec** 集成实现安全事件追踪、**Loki + Promtail** 实现日志聚合、**Blackbox Exporter** 实现端点主动探测（HTTP/TCP/ICMP）并附带 Prometheus 告警规则，以及 **Grafana** 仪表盘模板可视化系统、安全、可用性和日志指标。通过 Docker 几分钟内完成部署，支持 Telegram、Discord、Email、Slack 多渠道告警，可从单一面板监控无限远程节点。无 SaaS 依赖，无月费 — 完全掌控你的 VPS 监控。
+一套完整的 VPS 自托管监控方案，整合 **Uptime Kuma** 实现可用性监控、**Beszel** 实现性能指标采集、**CrowdSec** 集成实现安全事件追踪、**Loki + Promtail** 实现日志聚合、**Blackbox Exporter** 实现端点主动探测（HTTP/TCP/ICMP）并附带 Prometheus 告警规则、**Grafana** 仪表盘模板可视化系统/安全/可用性/日志指标，以及 **Alertmanager** 实现多渠道告警通知（Telegram、Slack、Discord），支持按严重级别路由、抑制规则和静默管理。通过 Docker 几分钟内完成部署，支持 Telegram、Discord、Email、Slack 多渠道告警，可从单一面板监控无限远程节点。无 SaaS 依赖，无月费 — 完全掌控你的 VPS 监控。
 
 > 属于 [0x10debug](https://github.com/0x10debug) VPS 工具套件的一部分。
 
@@ -14,6 +14,7 @@
 | [Loki](https://github.com/grafana/loki) + [Promtail](https://grafana.com/docs/loki/latest/send-data/promtail/) | 日志聚合（syslog、auth、auditd、docker） | 3100 | `/data/loki` |
 | [Blackbox Exporter](https://github.com/prometheus/blackbox_exporter) | 可用性探测（HTTP/TCP/ICMP）+ Prometheus 告警规则 | 9115 | 仅配置 |
 | [Grafana](https://github.com/grafana/grafana) | 仪表盘模板：VPS、安全、可用性、日志 | 3000 | `/data/grafana` |
+| [Alertmanager](https://github.com/prometheus/alertmanager) | 告警通知：Telegram、Slack、Discord | 9093 | `/data/alertmanager` |
 | 告警模板 | Telegram、Discord、Email、Slack | — | `/data/monitor-alerts` |
 | 状态页 | 自包含 HTML 状态页 | — | 可配置 |
 
@@ -104,6 +105,9 @@ mb monitor logs
 # 查看 Blackbox Exporter 可用性探测状态
 mb monitor availability
 
+# 查看 Alertmanager 告警通知状态与配置指引
+mb monitor alerts
+
 # 更新所有服务到最新镜像
 mb monitor update
 
@@ -176,6 +180,25 @@ sudo ./mb monitor status-page
 
 运行 `mb monitor dashboards` 查看 Grafana 状态与导入指引。面板详情、自定义指南和 API 导入示例见[仪表盘说明](dashboards/README.md)。
 
+## 告警通知
+
+`compose/alertmanager.yml` 提供了 Prometheus Alertmanager 的 docker-compose 模板。它接收 Prometheus 触发的告警，按 alertname + service + severity 分组，应用抑制规则（critical 抑制 warning），并分发通知到 Telegram、Slack 和 Discord。
+
+- **Alertmanager** — 通知路由器，端口 9093，数据位于 `/data/alertmanager`，固定 `prom/alertmanager:v0.27.0`
+- **路由配置** — `alerts/alertmanager-rules.yml`：critical → Telegram + Slack，warning → Slack，info → 仅 Slack
+- **消息模板** — `alerts/alert-templates.tmpl`：Telegram（Markdown）、Slack（Block Kit）、Discord（embed），含颜色编码和 runbook 链接
+- **告警规则** — `agents/prometheus-alert-rules.yml`：NodeDown、HighCPUUsage、HighMemoryUsage、DiskSpaceLow、ServiceDown、CrowdSecAlerts、SSLCertExpiring、ProbeFailed、HighLogRate
+- **抑制规则** — critical 抑制同服务的 warning/info；NodeDown 抑制同实例的服务级告警
+- **静默管理** — 运行时通过 `amtool` 或 Alertmanager Web UI 创建静默
+
+| 严重级别 | 通知渠道 | 重复间隔 |
+|----------|----------|----------|
+| critical | Telegram + Slack（+ Discord） | 1h |
+| warning | Slack（+ Discord） | 4h |
+| info | 仅 Slack | 12h |
+
+运行 `mb monitor alerts` 查看 Alertmanager 状态与配置指引。完整部署指南、渠道配置和 Runbook 见[告警通知](docs/alerting.md)。
+
 ## 常见问题
 
 ### 可以用其他反向代理替代 Caddy 吗？
@@ -212,6 +235,7 @@ sudo tar -czf monitor-backup-$(date +%F).tar.gz /data/uptime-kuma /data/beszel /
 - [安全监控](docs/security-monitoring.md) — 如何集成 CrowdSec
 - [日志聚合](docs/logging-stack.md) — 如何部署 Loki + Promtail 并用 LogQL 查询日志
 - [可用性监控](docs/availability-monitoring.md) — 如何部署 Blackbox Exporter 并接入 Prometheus + Grafana
+- [告警通知](docs/alerting.md) — 如何部署 Alertmanager 并配置 Telegram/Slack/Discord 告警通知
 
 ## 相关仓库
 

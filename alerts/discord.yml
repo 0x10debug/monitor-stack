@@ -1,0 +1,84 @@
+# discord.yml — Alertmanager Discord receiver definition.
+#
+# Part of the 0x10debug monitor-stack:
+# https://github.com/0x10debug/monitor-stack
+#
+# Alertmanager has no native Discord integration, but Discord webhooks are
+# Slack-compatible: appending /slack to a Discord webhook URL makes it accept
+# the Slack webhook payload format. This lets us reuse Alertmanager's native
+# slack_config to send alerts to Discord.
+#
+# Alternatively, use webhook_config with a custom JSON embed payload. The
+# approach below uses slack_config for simplicity and uses the embed colour
+# coding:
+#   red    (16711680 / 0xFF0000) — critical / firing
+#   yellow (16776960 / 0xFFFF00) — warning / firing
+#   green  (65280    / 0x00FF00) — resolved
+#
+# Required env vars (see compose/.env.example):
+#   DISCORD_WEBHOOK_URL — webhook URL from Discord channel settings
+#
+# Message formatting uses the Discord embed template from
+# alerts/alert-templates.tmpl (the `discord_default` template). When using
+# the Slack-compatibility mode, the `text` field maps to the Discord message
+# content and `title` maps to the embed title.
+
+receivers:
+  # ─── Critical alerts ─────────────────────────────────────────
+  - name: discord-critical
+    slack_configs:
+      # Append /slack to the Discord webhook URL for Slack-compat mode.
+      - api_url: "${DISCORD_WEBHOOK_URL}/slack"
+        channel: "alerts-critical"
+        send_resolved: true
+        title: '{{ template "discord.title" . }}'
+        text: '{{ template "discord.text" . }}'
+        color: '{{ template "discord.color" . }}'
+
+  # ─── Warning alerts ──────────────────────────────────────────
+  - name: discord-warning
+    slack_configs:
+      - api_url: "${DISCORD_WEBHOOK_URL}/slack"
+        channel: "alerts-warning"
+        send_resolved: true
+        title: '{{ template "discord.title" . }}'
+        text: '{{ template "discord.text" . }}'
+        color: '{{ template "discord.color" . }}'
+
+  # ─── Info alerts ─────────────────────────────────────────────
+  - name: discord-info
+    slack_configs:
+      - api_url: "${DISCORD_WEBHOOK_URL}/slack"
+        channel: "alerts-info"
+        send_resolved: false
+        title: '{{ template "discord.title" . }}'
+        text: '{{ template "discord.text" . }}'
+        color: '{{ template "discord.color" . }}'
+
+# ─── Alternative: native webhook_config with embed JSON ────────
+# If you prefer Discord's native embed format over Slack-compat mode, replace
+# the slack_configs above with a webhook_config that posts an embed payload:
+#
+#   - name: discord-critical
+#     webhook_configs:
+#       - url: "${DISCORD_WEBHOOK_URL}"
+#         send_resolved: true
+#         # The embed JSON is rendered by a relay or a custom template. For
+#         # a pure-Alertmanager setup, use the Slack-compat mode above.
+
+# ─── Environment variables ──────────────────────────────────────
+#   DISCORD_WEBHOOK_URL — https://discord.com/api/webhooks/<id>/<token>
+#
+# Create the webhook in Discord:
+#   1. Open the server → Channel Settings → Integrations → Webhooks.
+#   2. Create a webhook for each channel: #alerts-critical, #alerts-warning,
+#      #alerts-info (or use a single webhook and let Discord route by
+#      channel name).
+#   3. Copy the webhook URL and paste it into compose/.env as
+#      DISCORD_WEBHOOK_URL.
+
+# ─── Quiet hours ────────────────────────────────────────────────
+# Discord has no native quiet-hours feature. Use Alertmanager
+# mute_time_intervals in alertmanager-rules.yml to suppress non-critical
+# alerts during maintenance windows. See the slack.yml quiet-hours example
+# for the config snippet.

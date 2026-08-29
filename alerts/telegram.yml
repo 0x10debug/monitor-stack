@@ -1,0 +1,81 @@
+# telegram.yml — Alertmanager Telegram receiver definition.
+#
+# Part of the 0x10debug monitor-stack:
+# https://github.com/0x10debug/monitor-stack
+#
+# Alertmanager has no native Telegram integration. The standard approach is to
+# send alerts through a webhook_config that points at a small Telegram relay
+# (e.g. a containerised bot or a serverless function) which translates the
+# Alertmanager webhook payload into a Telegram sendMessage API call using the
+# bot token and chat ID below.
+#
+# This file is a standalone receiver snippet. The full routing config that
+# wires this receiver into the route tree lives in
+# alerts/alertmanager-rules.yml — copy the `receivers` block below into that
+# file under `receivers:` to enable Telegram notifications.
+#
+# Required env vars (see compose/.env.example):
+#   TELEGRAM_BOT_TOKEN — bot token from @BotFather
+#   TELEGRAM_CHAT_ID   — target chat/channel ID (negative for channels)
+#
+# Message formatting is handled by alerts/alert-templates.tmpl (the
+# `telegram_default` template). The relay must render that template before
+# posting to the Telegram API.
+
+# ─── Receiver ───────────────────────────────────────────────────
+# A receiver named `telegram` that fires a webhook at the Telegram relay.
+# The relay URL is typically http://<relay-host>:<port>/alertmanager.
+# Adjust RELAY_URL to match your deployment.
+receivers:
+  - name: telegram
+    webhook_configs:
+      # The relay reads the Alertmanager webhook payload, renders the
+      # telegram_default template from alert-templates.tmpl, and POSTs the
+      # result to https://api.telegram.org/bot<TOKEN>/sendMessage.
+      - url: "${RELAY_URL:-http://telegram-relay:8080/alertmanager}"
+        send_resolved: true
+        max_alerts: 10
+
+# ─── Severity-specific receivers ────────────────────────────────
+# Separate receivers per severity so the relay can format critical alerts
+# differently from info alerts (e.g. pin critical messages in the chat).
+  - name: telegram-critical
+    webhook_configs:
+      - url: "${RELAY_URL:-http://telegram-relay:8080/alertmanager}?severity=critical"
+        send_resolved: true
+        max_alerts: 5
+
+  - name: telegram-warning
+    webhook_configs:
+      - url: "${RELAY_URL:-http://telegram-relay:8080/alertmanager}?severity=warning"
+        send_resolved: true
+        max_alerts: 10
+
+  - name: telegram-info
+    webhook_configs:
+      - url: "${RELAY_URL:-http://telegram-relay:8080/alertmanager}?severity=info"
+        send_resolved: false
+        max_alerts: 20
+
+# ─── Environment variables (consumed by the relay, not Alertmanager) ──
+# These are read by the Telegram relay container, not by Alertmanager itself.
+# Document them here so operators know what the relay expects.
+#
+#   TELEGRAM_BOT_TOKEN  — from @BotFather (e.g. 123456:ABC-DEF...)
+#   TELEGRAM_CHAT_ID    — target chat (e.g. -1001234567890 for a channel)
+#
+# Store them in compose/.env and pass to the relay container via environment.
+
+# ─── Quiet hours ────────────────────────────────────────────────
+# Telegram does not support server-side quiet hours natively. To silence
+# non-critical alerts during a maintenance window, create an Alertmanager
+# silence via the API or UI:
+#
+#   amtool --alertmanager.url=http://localhost:9093 silence create \
+#     severity=warning \
+#     --start="$(date -Iseconds)" \
+#     --end="$(date -Iseconds -d '+8 hours')" \
+#     --comment="Maintenance window — warnings silenced"
+#
+# Critical alerts (severity=critical) are not matched by this silence and
+# will still page. See docs/alerting.md for the full silence workflow.

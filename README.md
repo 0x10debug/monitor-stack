@@ -1,6 +1,6 @@
 # Self-Hosted Monitoring Stack for VPS — Uptime, Metrics & Alerts
 
-A complete self-hosted monitoring stack for VPS servers, combining **Uptime Kuma** for uptime and availability monitoring, **Beszel** for performance metrics, **CrowdSec** integration for security event tracking, **Loki + Promtail** for log aggregation, **Blackbox Exporter** for active endpoint probing (HTTP/TCP/ICMP) with Prometheus alert rules, and **Grafana** dashboard templates for visualizing system, security, availability, and log metrics. Deploy everything with Docker in minutes, configure alerts via Telegram, Discord, Email, or Slack, and monitor unlimited remote nodes from a single dashboard. No SaaS dependencies, no monthly fees — full control over your VPS monitoring.
+A complete self-hosted monitoring stack for VPS servers, combining **Uptime Kuma** for uptime and availability monitoring, **Beszel** for performance metrics, **CrowdSec** integration for security event tracking, **Loki + Promtail** for log aggregation, **Blackbox Exporter** for active endpoint probing (HTTP/TCP/ICMP) with Prometheus alert rules, **Grafana** dashboard templates for visualizing system, security, availability, and log metrics, and **Alertmanager** for multi-channel alert notifications (Telegram, Slack, Discord) with severity-based routing, inhibition, and silencing. Deploy everything with Docker in minutes, configure alerts via Telegram, Discord, Email, or Slack, and monitor unlimited remote nodes from a single dashboard. No SaaS dependencies, no monthly fees — full control over your VPS monitoring.
 
 > Part of the [0x10debug](https://github.com/0x10debug) VPS tool suite.
 
@@ -14,6 +14,7 @@ A complete self-hosted monitoring stack for VPS servers, combining **Uptime Kuma
 | [Loki](https://github.com/grafana/loki) + [Promtail](https://grafana.com/docs/loki/latest/send-data/promtail/) | Log aggregation (syslog, auth, auditd, docker) | 3100 | `/data/loki` |
 | [Blackbox Exporter](https://github.com/prometheus/blackbox_exporter) | Availability probing (HTTP/TCP/ICMP) + Prometheus alert rules | 9115 | config-only |
 | [Grafana](https://github.com/grafana/grafana) | Dashboard templates: VPS, security, availability, logs | 3000 | `/data/grafana` |
+| [Alertmanager](https://github.com/prometheus/alertmanager) | Alert notifications: Telegram, Slack, Discord | 9093 | `/data/alertmanager` |
 | Alert templates | Telegram, Discord, Email, Slack | — | `/data/monitor-alerts` |
 | Status page | Self-contained HTML status page | — | configurable |
 
@@ -104,6 +105,9 @@ mb monitor logs
 # Show Blackbox Exporter availability probing status
 mb monitor availability
 
+# Show Alertmanager status and alert configuration guide
+mb monitor alerts
+
 # Update all services to latest images
 mb monitor update
 
@@ -176,6 +180,25 @@ Four Grafana dashboard JSON templates ship in `dashboards/`, plus auto-provision
 
 Run `mb monitor dashboards` for Grafana status and import instructions. See [Dashboards README](dashboards/README.md) for panel details, customization guide, and API import examples.
 
+## Alert Notifications
+
+A Prometheus Alertmanager docker-compose template ships at `compose/alertmanager.yml`. It receives firing alerts from Prometheus, groups them by alertname + service + severity, applies inhibition rules (critical suppresses warning), and dispatches notifications to Telegram, Slack, and Discord.
+
+- **Alertmanager** — notification router, port 9093, data at `/data/alertmanager`, pinned `prom/alertmanager:v0.27.0`
+- **Routing config** — `alerts/alertmanager-rules.yml`: critical → Telegram + Slack, warning → Slack, info → Slack only
+- **Message templates** — `alerts/alert-templates.tmpl`: Telegram (Markdown), Slack (Block Kit), Discord (embed), with colour coding and runbook links
+- **Alert rules** — `agents/prometheus-alert-rules.yml`: NodeDown, HighCPUUsage, HighMemoryUsage, DiskSpaceLow, ServiceDown, CrowdSecAlerts, SSLCertExpiring, ProbeFailed, HighLogRate
+- **Inhibition** — critical suppresses warning/info for the same service; NodeDown suppresses service-level alerts for the same instance
+- **Silencing** — runtime silences via `amtool` or the Alertmanager web UI
+
+| Severity | Channels | Repeat interval |
+|----------|----------|-----------------|
+| critical | Telegram + Slack (+ Discord) | 1h |
+| warning | Slack (+ Discord) | 4h |
+| info | Slack only | 12h |
+
+Run `mb monitor alerts` for Alertmanager status and configuration instructions. See [Alert Notifications](docs/alerting.md) for the full deployment guide, channel setup, and runbook.
+
 ## FAQ
 
 ### Can I use a different reverse proxy instead of Caddy?
@@ -212,6 +235,7 @@ Store the archive off-site (e.g., to S3 or another server).
 - [Security Monitoring](docs/security-monitoring.md) — How to integrate CrowdSec
 - [Log Aggregation](docs/logging-stack.md) — How to deploy Loki + Promtail and query logs with LogQL
 - [Availability Monitoring](docs/availability-monitoring.md) — How to deploy Blackbox Exporter and wire it into Prometheus + Grafana
+- [Alert Notifications](docs/alerting.md) — How to deploy Alertmanager and configure Telegram/Slack/Discord notifications
 
 ## Related Repositories
 

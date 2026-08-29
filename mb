@@ -18,6 +18,7 @@
 #   logs                Show Loki + Promtail log aggregation instructions
 #   availability        Show Blackbox Exporter availability probing status
 #   dashboards          Show Grafana dashboard status and import instructions
+#   alerts              Show Alertmanager status and alert configuration guide
 #   update              Update the monitoring stack
 #   help                Show this help message
 
@@ -52,6 +53,7 @@ COMMANDS:
     logs                Show Loki + Promtail log aggregation status and queries
     availability        Show Blackbox Exporter availability probing status
     dashboards          Show Grafana dashboard status and import instructions
+    alerts              Show Alertmanager status and alert configuration guide
     update              Pull latest images and restart the stack
     help                Show this help message
 
@@ -63,6 +65,7 @@ EXAMPLES:
     mb monitor logs
     mb monitor availability
     mb monitor dashboards
+    mb monitor alerts
 
 DOCUMENTATION:
     https://github.com/0x10debug/monitor-stack#readme
@@ -590,6 +593,135 @@ Documentation:
 EOF
 }
 
+# ─── alerts ───────────────────────────────────────────────────
+mb_monitor_alerts() {
+    mb_check_docker
+    mb_step "Alertmanager Alert Notifications"
+
+    local compose_file="${MB_COMPOSE_DIR}/alertmanager.yml"
+
+    if [[ ! -f "$compose_file" ]]; then
+        mb_die "Alertmanager compose template not found: $compose_file"
+    fi
+
+    # Check if Alertmanager is running.
+    local alertmanager_running
+    alertmanager_running="$(docker ps --filter 'name=^alertmanager$' --format '{{.Names}}' 2>/dev/null || true)"
+
+    echo
+    if [[ -n "$alertmanager_running" ]]; then
+        mb_success "Alertmanager is running"
+        echo
+        mb_info "Container status:"
+        sudo docker compose -f "$compose_file" ps 2>/dev/null || \
+            docker ps --filter 'name=^alertmanager$' 2>/dev/null || true
+
+        echo
+        mb_info "Alertmanager health:"
+        if curl -sf http://127.0.0.1:"${ALERTMANAGER_PORT:-9093}"/-/healthy >/dev/null 2>&1; then
+            mb_success "Alertmanager is healthy (http://127.0.0.1:${ALERTMANAGER_PORT:-9093}/-/healthy)"
+        else
+            mb_warn "Alertmanager did not report healthy on port ${ALERTMANAGER_PORT:-9093}"
+        fi
+
+        echo
+        mb_info "Active alerts:"
+        local alerts_json
+        alerts_json="$(curl -s http://127.0.0.1:"${ALERTMANAGER_PORT:-9093}"/api/v2/alerts 2>/dev/null || true)"
+        if [[ -n "$alerts_json" && "$alerts_json" != "[]" ]]; then
+            echo "$alerts_json" | python3 -c "
+import json, sys
+alerts = json.load(sys.stdin)
+for a in alerts:
+    name = a.get('labels', {}).get('alertname', '?')
+    sev = a.get('labels', {}).get('severity', '?')
+    inst = a.get('labels', {}).get('instance', '?')
+    state = a.get('status', {}).get('state', '?')
+    print(f'  {state:8s} [{sev:8s}] {name:25s} {inst}')
+" 2>/dev/null || mb_detail "could not parse alerts JSON"
+        else
+            mb_detail "no active alerts"
+        fi
+
+        echo
+        mb_info "Active silences:"
+        local silences_json
+        silences_json="$(curl -s http://127.0.0.1:"${ALERTMANAGER_PORT:-9093}"/api/v2/silences 2>/dev/null || true)"
+        if [[ -n "$silences_json" && "$silences_json" != "[]" ]]; then
+            echo "$silences_json" | python3 -c "
+import json, sys
+silences = json.load(sys.stdin)
+for s in silences:
+    sid = s.get('id', '?')
+    comment = s.get('comment', '?')
+    state = s.get('status', {}).get('state', '?')
+    print(f'  {state:8s} {sid}  {comment}')
+" 2>/dev/null || mb_detail "could not parse silences JSON"
+        else
+            mb_detail "no active silences"
+        fi
+    else
+        mb_warn "Alertmanager is not running."
+        mb_detail "Deploy it with:"
+        mb_detail "  sudo docker compose -f compose/alertmanager.yml up -d"
+        mb_detail "  (or merge with the main stack: -f compose.yml -f alertmanager.yml)"
+    fi
+
+    echo
+    mb_info "Alert rules (agents/prometheus-alert-rules.yml):"
+    mb_detail "NodeDown           — host unreachable for 1m              (critical)"
+    mb_detail "NodeUp             — host recovered                       (info)"
+    mb_detail "HighCPUUsage       — CPU > 80% for 5m                     (warning)"
+    mb_detail "HighMemoryUsage    — memory > 90% for 5m                  (warning)"
+    mb_detail "DiskSpaceLow       — free disk < 10% for 5m               (warning)"
+    mb_detail "ServiceDown        — Docker container stopped for 2m      (critical)"
+    mb_detail "CrowdSecAlerts     — > 5 new CrowdSec decisions in 5m     (warning)"
+    mb_detail "SSLCertExpiring    — SSL cert < 14 days                   (warning)"
+    mb_detail "ProbeFailed        — Blackbox probe failed for 2m         (critical)"
+    mb_detail "HighLogRate        — Loki error log rate > 10/sec for 5m  (warning)"
+
+    echo
+    mb_info "Notification channels (alerts/alertmanager-rules.yml):"
+    mb_detail "critical → Telegram + Slack (+ Discord)"
+    mb_detail "warning  → Slack (+ Discord)"
+    mb_detail "info     → Slack only"
+
+    echo
+    cat <<'EOF'
+
+To configure notification channels:
+
+  1. Set webhook URLs and bot tokens in compose/.env:
+       SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+       DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+       TELEGRAM_BOT_TOKEN=123456:ABC-DEF...
+       TELEGRAM_CHAT_ID=-1001234567890
+
+  2. Deploy Alertmanager:
+       sudo docker compose -f compose/alertmanager.yml up -d
+
+  3. Wire Prometheus to Alertmanager — add to prometheus.yml:
+       alerting:
+         alertmanagers:
+           - static_configs:
+               - targets: ['alertmanager:9093']
+       rule_files:
+         - /etc/prometheus/prometheus-alert-rules.yml
+
+  4. Reload Prometheus:
+       sudo docker kill -s SIGHUP prometheus
+
+  5. Create a silence (maintenance window):
+       amtool --alertmanager.url=http://localhost:9093 silence create \
+         severity=warning --duration=8h --comment="Maintenance"
+
+  Documentation:
+    https://github.com/0x10debug/monitor-stack/blob/main/docs/alerting.md
+    https://prometheus.io/docs/alerting/latest/alertmanager/
+
+EOF
+}
+
 # ─── update ──────────────────────────────────────────────────
 mb_monitor_update() {
     mb_check_docker
@@ -646,6 +778,7 @@ mb_monitor() {
         logs)                mb_monitor_logs "$@" ;;
         availability)        mb_monitor_availability "$@" ;;
         dashboards)          mb_monitor_dashboards "$@" ;;
+        alerts)              mb_monitor_alerts "$@" ;;
         update)              mb_monitor_update "$@" ;;
         help|-h|--help)      mb_monitor_help ;;
         version|-v|--version) mb_version ;;

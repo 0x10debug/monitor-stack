@@ -1,0 +1,222 @@
+# prometheus-alert-rules.yml — Prometheus alert rules for monitor-stack.
+#
+# Part of the 0x10debug monitor-stack:
+# https://github.com/0x10debug/monitor-stack
+#
+# These rules evaluate metrics from the monitor-stack components:
+#   - node_exporter       (NodeDown, HighCPUUsage, HighMemoryUsage, DiskSpaceLow)
+#   - Docker / cAdvisor   (ServiceDown — container stopped)
+#   - CrowdSec            (CrowdSecAlerts — new decisions)
+#   - Blackbox Exporter   (SSLCertExpiring, ProbeFailed)
+#   - Loki                (HighLogRate — error log spike)
+#
+# Load them into Prometheus by adding this file to the rule_files list in
+# your prometheus.yml:
+#
+#   rule_files:
+#     - /etc/prometheus/prometheus-alert-rules.yml
+#     - /etc/prometheus/prometheus-blackbox-rules.yml
+#
+# Alert labels (severity: critical/warning/info, service: <name>) are
+# consumed by Alertmanager for routing (see alerts/alertmanager-rules.yml).
+# The `runbook_url` annotation links each alert to the runbook section in
+# docs/alerting.md.
+#
+# Tune the `for` durations and thresholds to match your environment. The
+# defaults are conservative — they avoid flapping on transient blips while
+# still catching real problems quickly.
+
+groups:
+  # ─── Node health (node_exporter) ──────────────────────────────
+  - name: node_health
+    rules:
+      # ─── NodeDown — host unreachable ───────────────────────────
+      # Fires when Prometheus cannot scrape a node_exporter target for 1m.
+      # This is the most severe alert — if a node is down, every service on
+      # it is potentially down. The inhibition rule in alertmanager-rules.yml
+      # suppresses ServiceDown/HighCPU/HighMemory/DiskSpaceLow for the same
+      # instance while NodeDown is firing.
+      - alert: NodeDown
+        expr: up{job="node"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: node
+          category: node
+        annotations:
+          summary: "Node down: {{ $labels.instance }}"
+          description: "Prometheus has been unable to scrape node_exporter on {{ $labels.instance }} for 1 minute. The host may be offline or node_exporter is not running."
+          runbook_url: "https://github.com/0x10debug/monitor-stack/blob/main/docs/alerting.md#nodedown"
+
+      # ─── NodeUp — informational, node is reachable ─────────────
+      # Fires (as a resolved notification) when a node comes back up after
+      # being down. Uses the negation of the NodeDown expression so
+      # Alertmanager sends a resolved notification through the same route.
+      - alert: NodeUp
+        expr: up{job="node"} == 1
+        for: 1m
+        labels:
+          severity: info
+          service: node
+          category: node
+        annotations:
+          summary: "Node up: {{ $labels.instance }}"
+          description: "node_exporter on {{ $labels.instance }} is reachable again."
+          runbook_url: "https://github.com/0x10debug/monitor-stack/blob/main/docs/alerting.md#nodeup"
+
+      # ─── HighCPUUsage — CPU > 80% for 5m ───────────────────────
+      # node_exporter exposes CPU usage as 1 - avg(rate(node_cpu_seconds_total
+      # {mode="idle"}[5m])). The 80% threshold catches sustained load without
+      # paging on brief spikes (compilation, backups). Lower to 70% for
+      # latency-sensitive workloads.
+      - alert: HighCPUUsage
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{job="node", mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+          service: node
+          category: node
+        annotations:
+          summary: "High CPU usage: {{ $labels.instance }}"
+          description: "CPU usage on {{ $labels.instance }} is {{ $value | printf \"%.1f\" }}% (threshold: 80%) for the last 5 minutes."
+          runbook_url: "https://github.com/0x10debug/monitor-stack/blob/main/docs/alerting.md#highcpuusage"
+
+      # ─── HighMemoryUsage — memory > 90% for 5m ─────────────────
+      # Fires when available memory drops below 10%. The 90% threshold leaves
+      # a small buffer before the OOM killer activates. Check swap usage and
+      # process memory when this fires.
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes{job="node"} / node_memory_MemTotal_bytes{job="node"})) * 100 > 90
+        for: 5m
+        labels:
+          severity: warning
+          service: node
+          category: node
+        annotations:
+          summary: "High memory usage: {{ $labels.instance }}"
+          description: "Memory usage on {{ $labels.instance }} is {{ $value | printf \"%.1f\" }}% (threshold: 90%) for the last 5 minutes. Available memory is critically low."
+          runbook_url: "https://github.com/0x10debug/monitor-stack/blob/main/docs/alerting.md#highmemoryusage"
+
+      # ─── DiskSpaceLow — free disk < 10% for 5m ─────────────────
+      # Fires when any filesystem has less than 10% free space. The 5m
+      # buffer avoids paging on temporary log bursts. Lower the threshold to
+      # 5% if you have large filesystems with predictable growth.
+      - alert: DiskSpaceLow
+        expr: (1 - (node_filesystem_avail_bytes{job="node", fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes{job="node", fstype!~"tmpfs|overlay|squashfs"})) * 100 > 90
+        for: 5m
+        labels:
+          severity: warning
+          service: node
+          category: node
+        annotations:
+          summary: "Disk space low: {{ $labels.instance }} {{ $labels.mountpoint }}"
+          description: "Filesystem {{ $labels.mountpoint }} on {{ $labels.instance }} has only {{ $value | printf \"%.1f\" }}% free space (threshold: 10%). Clean up logs or expand the volume."
+          runbook_url: "https://github.com/0x10debug/monitor-stack/blob/main/docs/alerting.md#diskspacelow"
+
+  # ─── Docker container health (cAdvisor / docker metrics) ──────
+  - name: docker_services
+    rules:
+      # ─── ServiceDown — Docker container stopped ────────────────
+      # Fires when a monitored Docker container is not in the "running"
+      # state for 2m. Requires cAdvisor or docker_exporter to expose
+      # container state metrics. The 2m buffer absorbs container restarts
+      # (e.g. watchtower updates) without paging.
+      - alert: ServiceDown
+        expr: container_last_seen{name!=""} < time() - 120
+        for: 2m
+        labels:
+          severity: critical
+          service: docker
+          category: service
+        annotations:
+          summary: "Container down: {{ $labels.name }}"
+          description: "Docker container {{ $labels.name }} has not been seen by the exporter for over 2 minutes. It may have stopped or crashed."
+          runbook_url: "https://github.com/0x10debug/monitor-stack/blob/main/docs/alerting.md#servicedown"
+
+  # ─── CrowdSec security alerts ─────────────────────────────────
+  - name: crowdsec_alerts
+    rules:
+      # ─── CrowdSecAlerts — new decisions in the last 5m ────────
+      # Fires when CrowdSec has created new decisions (blocked IPs) in the
+      # last 5 minutes. This indicates active attacks being mitigated. The
+      # metric is scraped from the CrowdSec local API exporter. Requires
+      # a CrowdSec metrics exporter (e.g. crowdsec-prometheus-exporter).
+      # Adjust the threshold (> 5 new decisions) to match your traffic
+      # baseline — on low-traffic nodes, even 1 new decision is noteworthy.
+      - alert: CrowdSecAlerts
+        expr: increase(crowdsec_decisions_total[5m]) > 5
+        for: 1m
+        labels:
+          severity: warning
+          service: crowdsec
+          category: security
+        annotations:
+          summary: "CrowdSec new decisions: {{ $labels.instance }}"
+          description: "CrowdSec on {{ $labels.instance }} created {{ $value | printf \"%.0f\" }} new decisions (blocked IPs) in the last 5 minutes. Check cscli decisions list for details."
+          runbook_url: "https://github.com/0x10debug/monitor-stack/blob/main/docs/alerting.md#crowdsecalerts"
+
+  # ─── Blackbox Exporter availability ───────────────────────────
+  - name: blackbox_alerts
+    rules:
+      # ─── ProbeFailed — Blackbox probe failure ──────────────────
+      # Fires when a Blackbox probe has been failing for 2m. This is the
+      # same condition as BlackboxProbeFailed in
+      # prometheus-blackbox-rules.yml, re-surfaced here with a `service`
+      # label so it routes through the same Alertmanager tree as the other
+      # monitor-stack alerts. If you already load prometheus-blackbox-rules.yml,
+      # you can remove this rule to avoid duplicate alerts.
+      - alert: ProbeFailed
+        expr: probe_success == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: blackbox
+          category: availability
+        annotations:
+          summary: "Probe failed: {{ $labels.instance }}"
+          description: "The Blackbox probe for {{ $labels.instance }} (module {{ $labels.module }}) has been failing for 2 minutes."
+          runbook_url: "https://github.com/0x10debug/monitor-stack/blob/main/docs/alerting.md#probefailed"
+
+      # ─── SSLCertExpiring — SSL cert < 14 days ──────────────────
+      # Fires when an SSL certificate probed by Blackbox Exporter expires in
+      # less than 14 days. The 14-day threshold gives enough lead time for
+      # manual renewal; for automated renewal (e.g. certbot), lower to 7
+      # days. This complements BlackboxSslCertificateExpiringSoon (7d) in
+      # prometheus-blackbox-rules.yml with an earlier warning.
+      - alert: SSLCertExpiring
+        expr: probe_ssl_earliest_cert_expiry - time() < 14 * 24 * 3600
+        for: 5m
+        labels:
+          severity: warning
+          service: blackbox
+          category: availability
+        annotations:
+          summary: "SSL certificate expiring: {{ $labels.instance }}"
+          description: "The SSL certificate for {{ $labels.instance }} expires in less than 14 days ({{ $value | printf \"%.0f\" }} seconds remaining). Renew it now."
+          runbook_url: "https://github.com/0x10debug/monitor-stack/blob/main/docs/alerting.md#sslcertexpiring"
+
+  # ─── Loki log rate alerts ─────────────────────────────────────
+  - name: loki_log_rate
+    rules:
+      # ─── HighLogRate — error log spike in Loki ─────────────────
+      # Fires when the rate of error-level log lines in Loki spikes above
+      # 10 lines/min for 5m, compared to the 1h baseline. This uses a
+      # LogQL metric query wrapped in a Prometheus alert. Requires Loki as
+      # a Prometheus data source (or a recording rule that scrapes Loki
+      # metrics). The query counts lines matching "error" or "ERROR" across
+      # all jobs. Tune the threshold and match pattern to your log format.
+      #
+      # If you use the Loki ruler (ruler_rules) instead of Prometheus for
+      # log-based alerts, move this rule to a Loki ruler rules file and
+      # adjust the syntax accordingly.
+      - alert: HighLogRate
+        expr: sum(rate({job=~".+"} |= "error" [5m])) by (job) > 10
+        for: 5m
+        labels:
+          severity: warning
+          service: loki
+          category: logs
+        annotations:
+          summary: "High error log rate: {{ $labels.job }}"
+          description: "Job {{ $labels.job }} is producing {{ $value | printf \"%.1f\" }} error log lines/sec (threshold: 10/sec) for the last 5 minutes. Check Loki for the offending service."
+          runbook_url: "https://github.com/0x10debug/monitor-stack/blob/main/docs/alerting.md#highlograte"

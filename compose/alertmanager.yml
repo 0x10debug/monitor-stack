@@ -1,0 +1,70 @@
+# monitor-stack — Alertmanager alert notification stack
+# Part of the 0x10debug VPS tool suite
+# https://github.com/0x10debug/monitor-stack
+#
+# This is a standalone docker-compose template for Prometheus Alertmanager.
+# It is meant to be deployed alongside compose/compose.yml — either merged
+# with `docker compose -f compose.yml -f alertmanager.yml up -d` or run on a
+# dedicated notification node. All images use pinned tags for reproducible
+# deployments.
+#
+# Alertmanager receives firing alerts from Prometheus, groups them by
+# alertname + service + severity, applies inhibition rules (critical
+# suppresses warning), and dispatches notifications to Telegram, Slack, and
+# Discord. The routing config and receiver definitions live in
+# alerts/alertmanager-rules.yml; message templates live in
+# alerts/alert-templates.tmpl.
+#
+# Required env vars (see compose/.env.example):
+#   SLACK_WEBHOOK_URL   — Slack incoming webhook URL
+#   DISCORD_WEBHOOK_URL — Discord webhook URL (optional, for Discord alerts)
+#   TELEGRAM_BOT_TOKEN  — Telegram bot token (used by the relay, optional)
+#   TELEGRAM_CHAT_ID    — Telegram chat ID (used by the relay, optional)
+
+networks:
+  mb-proxy:
+    external: true
+    name: ${MB_PROXY_NETWORK:-mb-proxy}
+
+services:
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: alertmanager
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/alertmanager/alertmanager-rules.yml
+      # Expand ${VAR} placeholders in the config from environment variables.
+      - --config.expand-env=true
+      # Load the Go message templates from alerts/alert-templates.tmpl.
+      - --storage.path=/alertmanager
+      # Bind the web UI to all interfaces inside the container; the host
+      # port binding below restricts access to localhost.
+      - --web.listen-address=:9093
+    volumes:
+      # Persist Alertmanager state (silences, notification log) across
+      # restarts so active silences are not lost on container recreation.
+      - /data/alertmanager:/alertmanager
+      # Bind-mount the routing config and receiver definitions from the
+      # monitor-stack repo. This is the source of truth for routing.
+      - ../alerts/alertmanager-rules.yml:/etc/alertmanager/alertmanager-rules.yml:ro
+      # Bind-mount the Go message templates for Telegram/Slack/Discord.
+      - ../alerts/alert-templates.tmpl:/etc/alertmanager/templates/alert-templates.tmpl:ro
+    environment:
+      # Alertmanager expands ${...} in the config when --config.expand-env
+      # is set. Pass the webhook URLs and relay URL as env vars.
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
+      - RELAY_URL=${RELAY_URL:-http://telegram-relay:8080/alertmanager}
+    ports:
+      # Alertmanager web UI + API — consumed by Prometheus (for sending
+      # alerts) and by operators (for viewing/silencing alerts). Bind to
+      # localhost only; put a reverse proxy in front for remote access.
+      - "127.0.0.1:${ALERTMANAGER_PORT:-9093}:9093"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9093/-/healthy | grep -q 'OK' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - mb-proxy

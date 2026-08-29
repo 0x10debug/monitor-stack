@@ -1,0 +1,94 @@
+# slack.yml — Alertmanager Slack receiver definition.
+#
+# Part of the 0x10debug monitor-stack:
+# https://github.com/0x10debug/monitor-stack
+#
+# Alertmanager has native Slack support via slack_config. This file defines
+# the Slack receivers used by the route tree in alertmanager-rules.yml. Copy
+# the `receivers` block below into that file under `receivers:` to enable
+# Slack notifications.
+#
+# Required env vars (see compose/.env.example):
+#   SLACK_WEBHOOK_URL — incoming webhook URL from your Slack app settings
+#
+# Message formatting uses the Slack Block Kit template defined in
+# alerts/alert-templates.tmpl (the `slack_default` template). Colour coding:
+#   red    (#FF0000) — critical / firing
+#   yellow (#FFFF00) — warning / firing
+#   green  (#36A64F) — resolved
+#
+# Channel routing:
+#   #alerts-critical — severity=critical
+#   #alerts-warning  — severity=warning
+#   #alerts-info     — severity=info
+
+receivers:
+  # ─── Critical channel (#alerts-critical) ─────────────────────
+  - name: slack-critical
+    slack_configs:
+      - api_url: "${SLACK_WEBHOOK_URL}"
+        channel: "#alerts-critical"
+        send_resolved: true
+        title: '{{ template "slack.title" . }}'
+        text: '{{ template "slack.text" . }}'
+        color: '{{ template "slack.color" . }}'
+        actions:
+          - type: button
+            text: "Runbook :book:"
+            url: '{{ template "runbook.url" . }}'
+          - type: button
+            text: "Silence :no_bell:"
+            url: '{{ template "silence.url" . }}'
+
+  # ─── Warning channel (#alerts-warning) ───────────────────────
+  - name: slack-warning
+    slack_configs:
+      - api_url: "${SLACK_WEBHOOK_URL}"
+        channel: "#alerts-warning"
+        send_resolved: true
+        title: '{{ template "slack.title" . }}'
+        text: '{{ template "slack.text" . }}'
+        color: '{{ template "slack.color" . }}'
+
+  # ─── Info channel (#alerts-info) ─────────────────────────────
+  - name: slack-info
+    slack_configs:
+      - api_url: "${SLACK_WEBHOOK_URL}"
+        channel: "#alerts-info"
+        send_resolved: false
+        title: '{{ template "slack.title" . }}'
+        text: '{{ template "slack.text" . }}'
+        color: '{{ template "slack.color" . }}'
+
+# ─── Environment variables ──────────────────────────────────────
+#   SLACK_WEBHOOK_URL — https://hooks.slack.com/services/T.../B.../...
+#
+# Create the incoming webhook in Slack:
+#   1. Go to https://api.slack.com/apps and create a new app (or use an
+#      existing one).
+#   2. Enable "Incoming Webhooks" under Features.
+#   3. Add webhook URLs for each channel: #alerts-critical, #alerts-warning,
+#      #alerts-info.
+#   4. Paste the URL into compose/.env as SLACK_WEBHOOK_URL.
+#
+# If you use a single webhook for all channels, remove the `channel` field
+# above and Slack will post to the channel the webhook was created for.
+
+# ─── Quiet hours ────────────────────────────────────────────────
+# Slack supports Do Not Disturb at the user level, but Alertmanager routing
+# is the right place to enforce quiet hours. Add a time_interval to the route
+# tree in alertmanager-rules.yml:
+#
+#   route:
+#     routes:
+#       - matchers: ['severity = "warning"']
+#         receiver: slack-warning
+#         mute_time_intervals: ['off-hours']
+#
+#   mute_time_intervals:
+#     - name: off-hours
+#       time_intervals:
+#         - times:
+#             - start_time: '22:00'
+#               end_time: '08:00'
+#           location: 'Asia/Shanghai'

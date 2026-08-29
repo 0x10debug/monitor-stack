@@ -1,0 +1,250 @@
+# alertmanager-rules.yml — Alertmanager routing, grouping, and inhibition.
+#
+# Part of the 0x10debug monitor-stack:
+# https://github.com/0x10debug/monitor-stack
+#
+# This is the main Alertmanager configuration file. It defines:
+#   - The route tree (how alerts are grouped and dispatched)
+#   - Receivers (Telegram + Slack + Discord, per severity)
+#   - Inhibition rules (critical suppresses warning for the same service)
+#   - Mute time intervals (quiet hours for non-critical alerts)
+#
+# The receiver definitions are duplicated from alerts/telegram.yml,
+# alerts/slack.yml, and alerts/discord.yml so this file is self-contained —
+# Alertmanager loads a single config file and cannot include other YAML
+# fragments. The per-channel files serve as standalone reference snippets.
+#
+# Message templates are loaded from alerts/alert-templates.tmpl via the
+# --config.templates-files flag in compose/alertmanager.yml.
+#
+# Required env vars (see compose/.env.example):
+#   TELEGRAM_BOT_TOKEN  — bot token from @BotFather (used by the relay)
+#   TELEGRAM_CHAT_ID    — target chat/channel ID (used by the relay)
+#   SLACK_WEBHOOK_URL   — Slack incoming webhook URL
+#   DISCORD_WEBHOOK_URL — Discord webhook URL
+#
+# Alertmanager does not expand ${VAR} in config by default. Either:
+#   1. Run with --config.expand-env=true (set in compose/alertmanager.yml), or
+#   2. Replace ${...} placeholders with real values before deploying.
+
+global:
+  # The SMTP smarthost is only used if you add an email receiver. Left here
+  # as a reference for operators who want email notifications in addition to
+  # Telegram/Slack/Discord.
+  smtp_smarthost: 'localhost:25'
+  smtp_from: 'alerts@example.com'
+  # Slack API URL is set per-receiver via the api_url field. The global
+  # slack_api_url is an alternative but per-receiver is more flexible when
+  # different channels use different webhooks.
+
+# ─── Route tree ─────────────────────────────────────────────────
+# Alerts are grouped by alertname + service (the `group_by` fields) and
+# routed by severity. The top-level route catches everything not matched by
+# a child route and sends it to the default receiver (slack-info).
+#
+# group_wait: 30s   — wait 30s before sending the first notification for a
+#                     new group, so alerts that fire together arrive together.
+# group_interval: 5m — wait at least 5m between notifications for the same
+#                     group (avoids spamming on flapping alerts).
+# repeat_interval: 4h — re-send a notification every 4h if the alert is
+#                     still firing.
+
+route:
+  receiver: slack-info
+  group_by: ['alertname', 'service', 'severity']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  # Do not send resolved notifications for info-level alerts to reduce noise.
+  # Per-receiver send_resolved overrides this where needed.
+  routes:
+    # ─── Critical → Telegram + Slack + Discord ─────────────────
+    - matchers:
+        - severity = "critical"
+      receiver: telegram-critical
+      group_wait: 10s
+      group_interval: 1m
+      repeat_interval: 1h
+      # Fan out to all three channels by listing additional receivers.
+      # Alertmanager sends to the matched receiver only; to notify multiple
+      # channels, create a receiver that contains multiple configs (see the
+      # telegram-critical receiver below which includes slack + discord).
+      continue: false
+
+    # ─── Warning → Slack + Discord ─────────────────────────────
+    - matchers:
+        - severity = "warning"
+      receiver: slack-warning
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      continue: false
+
+    # ─── Info → Slack only (log, do not page) ──────────────────
+    - matchers:
+        - severity = "info"
+      receiver: slack-info
+      group_wait: 5m
+      group_interval: 30m
+      repeat_interval: 12h
+      continue: false
+
+# ─── Receivers ──────────────────────────────────────────────────
+# Each receiver bundles one or more notification configs. The critical
+# receiver includes Telegram + Slack + Discord so a single critical alert
+# pages all three channels simultaneously.
+
+receivers:
+  # ─── Critical: Telegram + Slack + Discord ────────────────────
+  - name: telegram-critical
+    webhook_configs:
+      # Telegram relay — renders alert-templates.tmpl and posts to the
+      # Telegram Bot API.
+      - url: "${RELAY_URL:-http://telegram-relay:8080/alertmanager}?severity=critical"
+        send_resolved: true
+        max_alerts: 5
+    slack_configs:
+      # Slack #alerts-critical channel.
+      - api_url: "${SLACK_WEBHOOK_URL}"
+        channel: "#alerts-critical"
+        send_resolved: true
+        title: '{{ template "slack.title" . }}'
+        text: '{{ template "slack.text" . }}'
+        color: '{{ template "slack.color" . }}'
+    # Discord via Slack-compat mode (/slack appended to webhook URL).
+    # Uncomment to enable Discord for critical alerts:
+    # - api_url: "${DISCORD_WEBHOOK_URL}/slack"
+    #   channel: "alerts-critical"
+    #   send_resolved: true
+    #   title: '{{ template "discord.title" . }}'
+    #   text: '{{ template "discord.text" . }}'
+    #   color: '{{ template "discord.color" . }}'
+
+  # ─── Warning: Slack + Discord ────────────────────────────────
+  - name: slack-warning
+    slack_configs:
+      - api_url: "${SLACK_WEBHOOK_URL}"
+        channel: "#alerts-warning"
+        send_resolved: true
+        title: '{{ template "slack.title" . }}'
+        text: '{{ template "slack.text" . }}'
+        color: '{{ template "slack.color" . }}'
+    # Discord (uncomment to enable):
+    # - api_url: "${DISCORD_WEBHOOK_URL}/slack"
+    #   channel: "alerts-warning"
+    #   send_resolved: true
+    #   title: '{{ template "discord.title" . }}'
+    #   text: '{{ template "discord.text" . }}'
+    #   color: '{{ template "discord.color" . }}'
+
+  # ─── Info: Slack only ────────────────────────────────────────
+  - name: slack-info
+    slack_configs:
+      - api_url: "${SLACK_WEBHOOK_URL}"
+        channel: "#alerts-info"
+        send_resolved: false
+        title: '{{ template "slack.title" . }}'
+        text: '{{ template "slack.text" . }}'
+        color: '{{ template "slack.color" . }}'
+
+  # ─── Discord-only receivers (reference, not wired into routes) ──
+  # Use these if you want Discord as the sole notification channel. Wire
+  # them into the route tree above by changing the receiver field.
+  - name: discord-critical
+    slack_configs:
+      - api_url: "${DISCORD_WEBHOOK_URL}/slack"
+        channel: "alerts-critical"
+        send_resolved: true
+        title: '{{ template "discord.title" . }}'
+        text: '{{ template "discord.text" . }}'
+        color: '{{ template "discord.color" . }}'
+
+  - name: discord-warning
+    slack_configs:
+      - api_url: "${DISCORD_WEBHOOK_URL}/slack"
+        channel: "alerts-warning"
+        send_resolved: true
+        title: '{{ template "discord.title" . }}'
+        text: '{{ template "discord.text" . }}'
+        color: '{{ template "discord.color" . }}'
+
+  - name: discord-info
+    slack_configs:
+      - api_url: "${DISCORD_WEBHOOK_URL}/slack"
+        channel: "alerts-info"
+        send_resolved: false
+        title: '{{ template "discord.title" . }}'
+        text: '{{ template "discord.text" . }}'
+        color: '{{ template "discord.color" . }}'
+
+# ─── Inhibition rules ───────────────────────────────────────────
+# A critical alert for the same service suppresses warning and info alerts
+# so you are not spammed with lower-severity noise when something is already
+# known to be down. The `equal` list defines the labels that must match for
+# inhibition to apply.
+
+inhibit_rules:
+  # Critical suppresses warning when alertname + service match.
+  - source_matchers:
+      - severity = "critical"
+    target_matchers:
+      - severity = "warning"
+    equal: ['alertname', 'service']
+
+  # Critical suppresses info when alertname + service match.
+  - source_matchers:
+      - severity = "critical"
+    target_matchers:
+      - severity = "info"
+    equal: ['alertname', 'service']
+
+  # Warning suppresses info when alertname + service match.
+  - source_matchers:
+      - severity = "warning"
+    target_matchers:
+      - severity = "info"
+    equal: ['alertname', 'service']
+
+  # NodeDown suppresses all other alerts for the same instance — if the node
+  # is down, every service on it is down, so individual service-down alerts
+  # are redundant noise.
+  - source_matchers:
+      - alertname = "NodeDown"
+    target_matchers:
+      - alertname =~ "ServiceDown|HighCPUUsage|HighMemoryUsage|DiskSpaceLow"
+    equal: ['instance']
+
+# ─── Mute time intervals (quiet hours) ──────────────────────────
+# Suppress non-critical alerts during off-hours. Wire into a route via
+# `mute_time_intervals: ['off-hours']`. Critical alerts are never muted.
+# Adjust the location and times to your timezone.
+
+mute_time_intervals:
+  - name: off-hours
+    time_intervals:
+      - times:
+          - start_time: '22:00'
+            end_time: '08:00'
+        location: 'Asia/Shanghai'
+
+# ─── Silence examples ───────────────────────────────────────────
+# Silences are created at runtime via the Alertmanager API or amtool, not
+# in the config file. Below are ready-to-use commands.
+#
+# Silence all warning alerts for 8 hours (maintenance window):
+#   amtool --alertmanager.url=http://localhost:9093 silence create \
+#     severity=warning \
+#     --duration=8h \
+#     --comment="Maintenance window — warnings silenced"
+#
+# Silence a specific alert by name:
+#   amtool --alertmanager.url=http://localhost:9093 silence create \
+#     alertname=HighCPUUsage \
+#     --duration=2h \
+#     --comment="Investigating CPU spike — temporary silence"
+#
+# List active silences:
+#   amtool --alertmanager.url=http://localhost:9093 silence query
+#
+# Expire a silence by ID:
+#   amtool --alertmanager.url=http://localhost:9093 silence expire <silence-id>
