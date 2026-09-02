@@ -15,7 +15,7 @@
       }
     ]
   },
-  "description": "VPS 总览仪表盘 — CPU、内存、磁盘、网络、负载、进程与 Docker 容器监控。数据源：Prometheus (node_exporter)。",
+  "description": "VPS Overview dashboard — CPU, memory, disk, network, load, processes and Docker container monitoring。Data source: Prometheus (node_exporter).",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -33,7 +33,7 @@
       },
       "id": 100,
       "panels": [],
-      "title": "系统概览",
+      "title": "System Overview",
       "type": "row"
     },
     {
@@ -41,7 +41,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "CPU 使用率（1 分钟平均）。",
+      "description": "CPU usage (1-minute average).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -107,7 +107,7 @@
           "refId": "A"
         }
       ],
-      "title": "CPU 使用率",
+      "title": "CPU Usage",
       "type": "stat"
     },
     {
@@ -115,7 +115,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "内存使用率。",
+      "description": "Memory usage.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -181,7 +181,7 @@
           "refId": "A"
         }
       ],
-      "title": "内存使用率",
+      "title": "Memory Usage",
       "type": "stat"
     },
     {
@@ -189,7 +189,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "根分区磁盘使用率。",
+      "description": "Root partition disk usage.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -255,7 +255,7 @@
           "refId": "A"
         }
       ],
-      "title": "磁盘使用率",
+      "title": "Disk Usage",
       "type": "stat"
     },
     {
@@ -263,7 +263,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "网络收发流量速率。",
+      "description": "Network send/receive traffic rate.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -362,7 +362,7 @@
           "refId": "B"
         }
       ],
-      "title": "网络流量",
+      "title": "Network Traffic",
       "type": "timeseries"
     },
     {
@@ -375,7 +375,7 @@
       },
       "id": 101,
       "panels": [],
-      "title": "负载均衡",
+      "title": "Load Average",
       "type": "row"
     },
     {
@@ -383,7 +383,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "load average 1/5/15 分钟。",
+      "description": "Load average 1/5/15 minutes.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -501,7 +501,7 @@
           "refId": "C"
         }
       ],
-      "title": "Load Average (1/5/15 分钟)",
+      "title": "Load Average (1/5/15 min)",
       "type": "timeseries"
     },
     {
@@ -514,7 +514,7 @@
       },
       "id": 102,
       "panels": [],
-      "title": "进程监控",
+      "title": "Process Monitoring",
       "type": "row"
     },
     {
@@ -522,7 +522,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "进程总数。",
+      "description": "Total process count.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -586,7 +586,7 @@
           "refId": "A"
         }
       ],
-      "title": "进程总数",
+      "title": "Total Processes",
       "type": "stat"
     },
     {
@@ -594,7 +594,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "僵尸进程数。",
+      "description": "Zombie process count.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -654,7 +654,7 @@
           "refId": "A"
         }
       ],
-      "title": "僵尸进程",
+      "title": "Zombie Processes",
       "type": "stat"
     },
     {
@@ -667,7 +667,7 @@
       },
       "id": 103,
       "panels": [],
-      "title": "Docker 监控",
+      "title": "Docker Monitoring",
       "type": "row"
     },
     {
@@ -675,7 +675,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "运行中的容器数量。",
+      "description": "Number of running containers.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -731,7 +731,7 @@
           "refId": "A"
         }
       ],
-      "title": "运行中容器",
+      "title": "Running Containers",
       "type": "stat"
     },
     {
@@ -739,7 +739,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "已停止的容器数量（cadvisor 报告但未运行）。",
+      "description": "Number of stopped containers (reported by cadvisor but not running).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -799,7 +799,7 @@
           "refId": "A"
         }
       ],
-      "title": "停止的容器",
+      "title": "Stopped Containers",
       "type": "stat"
     },
     {
@@ -807,7 +807,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "容器总数（运行中 + 停止）。",
+      "description": "Total containers (running + stopped).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -863,7 +863,7 @@
           "refId": "A"
         }
       ],
-      "title": "容器总数",
+      "title": "Total Containers",
       "type": "stat"
     }
   ],
@@ -882,7 +882,7 @@
           "text": "Prometheus",
           "value": "Prometheus"
         },
-        "description": "Prometheus 数据源 UID（由 agents/grafana-datasources.yml 自动配置）。",
+        "description": "Prometheus data source UID (auto-configured by agents/grafana-datasources.yml).",
         "hide": 0,
         "includeAll": false,
         "label": "Prometheus",
@@ -904,7 +904,7 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "VPS 总览",
+  "title": "VPS Overview",
   "uid": "vps-overview",
   "version": 1,
   "weekStart": ""

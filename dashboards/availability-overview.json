@@ -15,7 +15,7 @@
       }
     ]
   },
-  "description": "可用性总览仪表盘 — Blackbox Exporter HTTP/TCP/ICMP 探针状态、SSL 证书过期、响应时间、丢包率。数据源：Prometheus (blackbox_exporter)。",
+  "description": "Availability Overview dashboard — Blackbox Exporter HTTP/TCP/ICMP probe status, SSL certificate expiry, response time, packet loss。Data source: Prometheus (blackbox_exporter).",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -33,7 +33,7 @@
       },
       "id": 100,
       "panels": [],
-      "title": "HTTP 探针",
+      "title": "HTTP Probes",
       "type": "row"
     },
     {
@@ -41,7 +41,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "HTTP 探针状态（1=UP，0=DOWN）。",
+      "description": "HTTP probe status (1=UP, 0=DOWN).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -117,7 +117,7 @@
           "refId": "A"
         }
       ],
-      "title": "HTTP 探针状态",
+      "title": "HTTP Probe Status",
       "type": "stat"
     },
     {
@@ -125,7 +125,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "SSL 证书剩余有效天数。",
+      "description": "SSL certificate remaining validity days.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -189,7 +189,7 @@
           "refId": "A"
         }
       ],
-      "title": "SSL 证书过期天数",
+      "title": "SSL Certificate Expiry Days",
       "type": "bargauge"
     },
     {
@@ -197,7 +197,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "HTTP 探针响应时间。",
+      "description": "HTTP probe response time.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -293,7 +293,7 @@
           "refId": "A"
         }
       ],
-      "title": "HTTP 响应时间",
+      "title": "HTTP Response Time",
       "type": "timeseries"
     },
     {
@@ -306,7 +306,7 @@
       },
       "id": 101,
       "panels": [],
-      "title": "TCP 探针",
+      "title": "TCP Probes",
       "type": "row"
     },
     {
@@ -314,7 +314,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "TCP 端口连通性（1=可达，0=不可达）。",
+      "description": "TCP port connectivity (1=reachable, 0=unreachable).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -390,7 +390,7 @@
           "refId": "A"
         }
       ],
-      "title": "TCP 端口连通性",
+      "title": "TCP Port Connectivity",
       "type": "stat"
     },
     {
@@ -403,7 +403,7 @@
       },
       "id": 102,
       "panels": [],
-      "title": "ICMP 探针",
+      "title": "ICMP Probes",
       "type": "row"
     },
     {
@@ -411,7 +411,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "ICMP ping 延迟。",
+      "description": "ICMP ping latency.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -507,7 +507,7 @@
           "refId": "A"
         }
       ],
-      "title": "ICMP Ping 延迟",
+      "title": "ICMP Ping Latency",
       "type": "timeseries"
     },
     {
@@ -515,7 +515,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "ICMP 丢包率（100 - probe_success 百分比）。",
+      "description": "ICMP packet loss (100 - probe_success percentage).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -581,7 +581,7 @@
           "refId": "A"
         }
       ],
-      "title": "ICMP 丢包率",
+      "title": "ICMP Packet Loss",
       "type": "stat"
     }
   ],
@@ -600,7 +600,7 @@
           "text": "Prometheus",
           "value": "Prometheus"
         },
-        "description": "Prometheus 数据源 UID（由 agents/grafana-datasources.yml 自动配置）。",
+        "description": "Prometheus data source UID (auto-configured by agents/grafana-datasources.yml).",
         "hide": 0,
         "includeAll": false,
         "label": "Prometheus",
@@ -622,7 +622,7 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "可用性总览",
+  "title": "Availability Overview",
   "uid": "availability-overview",
   "version": 1,
   "weekStart": ""

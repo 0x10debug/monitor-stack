@@ -173,10 +173,10 @@ Run `mb monitor availability` for status and integration instructions. See [Avai
 
 Four Grafana dashboard JSON templates ship in `dashboards/`, plus auto-provisioning configs in `agents/` and a docker-compose template in `compose/grafana.yml`. Grafana loads dashboards and data sources (Prometheus + Loki) automatically on startup — no manual UI configuration needed.
 
-- **VPS 总览** (`vps-overview.json`) — CPU、内存、磁盘、网络、负载、进程、Docker 容器 (Prometheus / node_exporter)
-- **安全总览** (`security-overview.json`) — CrowdSec decisions/alerts、auditd 审计、Falco 事件、SSH 登录 (Loki + Prometheus)
-- **可用性总览** (`availability-overview.json`) — HTTP/TCP/ICMP 探针、SSL 证书过期、响应时间、丢包率 (Prometheus / blackbox_exporter)
-- **日志总览** (`logs-overview.json`) — 日志量趋势、错误/警告计数、按服务分组速率、Promtail 状态 (Loki + Prometheus)
+- **VPS Overview** (`vps-overview.json`) — CPU, memory, disk, network, load, processes, Docker containers (Prometheus / node_exporter)
+- **Security Overview** (`security-overview.json`) — CrowdSec decisions/alerts, auditd audit, Falco events, SSH logins (Loki + Prometheus)
+- **Availability Overview** (`availability-overview.json`) — HTTP/TCP/ICMP probes, SSL certificate expiry, response time, packet loss (Prometheus / blackbox_exporter)
+- **Logs Overview** (`logs-overview.json`) — Log volume trends, error/warning counts, per-service rates, Promtail status (Loki + Prometheus)
 
 Run `mb monitor dashboards` for Grafana status and import instructions. See [Dashboards README](dashboards/README.md) for panel details, customization guide, and API import examples.
 

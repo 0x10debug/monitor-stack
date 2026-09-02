@@ -15,7 +15,7 @@
       }
     ]
   },
-  "description": "安全总览仪表盘 — CrowdSec decisions/alerts、auditd 审计事件、Falco 事件、SSH 登录统计。数据源：Loki + Prometheus。",
+  "description": "Security Overview dashboard — CrowdSec decisions/alerts, auditd audit events, Falco events, SSH login statistics。Data source: Loki + Prometheus.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -41,7 +41,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "当前活跃的 decisions（封禁）数量。",
+      "description": "Current number of active decisions (bans).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -105,7 +105,7 @@
           "refId": "A"
         }
       ],
-      "title": "活跃 Decisions 数",
+      "title": "Active Decisions",
       "type": "stat"
     },
     {
@@ -113,7 +113,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "最近 1 小时新增 alerts 数。",
+      "description": "New alerts in the last 1 hour.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -177,7 +177,7 @@
           "refId": "A"
         }
       ],
-      "title": "最近 Alerts (1h)",
+      "title": "Recent Alerts (1h)",
       "type": "stat"
     },
     {
@@ -185,7 +185,7 @@
         "type": "loki",
         "uid": "${DS_LOKI}"
       },
-      "description": "封禁 IP 地理分布（从 CrowdSec 日志解析）。",
+      "description": "Banned IP geographic distribution (parsed from CrowdSec logs).",
       "gridPos": {
         "h": 6,
         "w": 8,
@@ -217,7 +217,7 @@
           "refId": "A"
         }
       ],
-      "title": "封禁 IP 地理分布",
+      "title": "Banned IP Geo Distribution",
       "type": "geomap"
     },
     {
@@ -230,7 +230,7 @@
       },
       "id": 101,
       "panels": [],
-      "title": "auditd 审计",
+      "title": "auditd Audit",
       "type": "row"
     },
     {
@@ -238,7 +238,7 @@
         "type": "loki",
         "uid": "${DS_LOKI}"
       },
-      "description": "最近审计事件流（auditd JSON）。",
+      "description": "Recent audit event stream (auditd JSON).",
       "gridPos": {
         "h": 8,
         "w": 24,
@@ -270,7 +270,7 @@
           "maxLines": 100
         }
       ],
-      "title": "最近审计事件",
+      "title": "Recent Audit Events",
       "type": "logs"
     },
     {
@@ -278,7 +278,7 @@
         "type": "loki",
         "uid": "${DS_LOKI}"
       },
-      "description": "特权命令执行次数（auditd 记录的 execve 事件）。",
+      "description": "Privileged command execution count (execve events recorded by auditd).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -365,7 +365,7 @@
           "refId": "A"
         }
       ],
-      "title": "特权命令执行",
+      "title": "Privileged Command Execution",
       "type": "timeseries"
     },
     {
@@ -373,7 +373,7 @@
         "type": "loki",
         "uid": "${DS_LOKI}"
       },
-      "description": "文件完整性告警（auditd 监控的文件变更事件）。",
+      "description": "File integrity alerts (file change events monitored by auditd).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -433,7 +433,7 @@
           "refId": "A"
         }
       ],
-      "title": "文件完整性告警 (1h)",
+      "title": "File Integrity Alerts (1h)",
       "type": "stat"
     },
     {
@@ -454,7 +454,7 @@
         "type": "loki",
         "uid": "${DS_LOKI}"
       },
-      "description": "Falco CRITICAL 事件计数。",
+      "description": "Falco CRITICAL event count.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -514,7 +514,7 @@
           "refId": "A"
         }
       ],
-      "title": "Falco CRITICAL 事件 (1h)",
+      "title": "Falco CRITICAL Events (1h)",
       "type": "stat"
     },
     {
@@ -522,7 +522,7 @@
         "type": "loki",
         "uid": "${DS_LOKI}"
       },
-      "description": "Falco WARNING 事件计数。",
+      "description": "Falco WARNING event count.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -586,7 +586,7 @@
           "refId": "A"
         }
       ],
-      "title": "Falco WARNING 事件 (1h)",
+      "title": "Falco WARNING Events (1h)",
       "type": "stat"
     },
     {
@@ -599,7 +599,7 @@
       },
       "id": 103,
       "panels": [],
-      "title": "SSH 登录",
+      "title": "SSH Logins",
       "type": "row"
     },
     {
@@ -607,7 +607,7 @@
         "type": "loki",
         "uid": "${DS_LOKI}"
       },
-      "description": "SSH 失败登录数。",
+      "description": "SSH failed login count.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -671,7 +671,7 @@
           "refId": "A"
         }
       ],
-      "title": "SSH 失败登录 (1h)",
+      "title": "SSH Failed Logins (1h)",
       "type": "stat"
     },
     {
@@ -679,7 +679,7 @@
         "type": "loki",
         "uid": "${DS_LOKI}"
       },
-      "description": "SSH 成功登录数。",
+      "description": "SSH successful login count.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -739,7 +739,7 @@
           "refId": "A"
         }
       ],
-      "title": "SSH 成功登录 (1h)",
+      "title": "SSH Successful Logins (1h)",
       "type": "stat"
     }
   ],
@@ -759,7 +759,7 @@
           "text": "Prometheus",
           "value": "Prometheus"
         },
-        "description": "Prometheus 数据源 UID（由 agents/grafana-datasources.yml 自动配置）。",
+        "description": "Prometheus data source UID (auto-configured by agents/grafana-datasources.yml).",
         "hide": 0,
         "includeAll": false,
         "label": "Prometheus",
@@ -779,7 +779,7 @@
           "text": "Loki",
           "value": "Loki"
         },
-        "description": "Loki 数据源 UID（由 agents/grafana-datasources.yml 自动配置）。",
+        "description": "Loki data source UID (auto-configured by agents/grafana-datasources.yml).",
         "hide": 0,
         "includeAll": false,
         "label": "Loki",
@@ -801,7 +801,7 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "安全总览",
+  "title": "Security Overview",
   "uid": "security-overview",
   "version": 1,
   "weekStart": ""

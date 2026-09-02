@@ -540,10 +540,10 @@ mb_monitor_dashboards() {
 
     echo
     mb_info "Dashboard templates (dashboards/):"
-    mb_detail "vps-overview.json         — CPU/内存/磁盘/网络/负载/进程/Docker (Prometheus)"
+    mb_detail "vps-overview.json         — CPU/memory/disk/network/load/processes/Docker (Prometheus)"
     mb_detail "security-overview.json    — CrowdSec/auditd/Falco/SSH (Loki + Prometheus)"
-    mb_detail "availability-overview.json — HTTP/TCP/ICMP 探针/SSL/延迟 (Prometheus)"
-    mb_detail "logs-overview.json        — 日志量/错误/警告/Promtail (Loki + Prometheus)"
+    mb_detail "availability-overview.json — HTTP/TCP/ICMP probes/SSL/latency (Prometheus)"
+    mb_detail "logs-overview.json        — Log volume/errors/warnings/Promtail (Loki + Prometheus)"
 
     echo
     mb_info "Data sources (agents/grafana-datasources.yml):"

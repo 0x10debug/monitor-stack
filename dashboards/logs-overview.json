@@ -15,7 +15,7 @@
       }
     ]
   },
-  "description": "日志总览仪表盘 — Loki 日志量趋势、错误/警告日志计数、按服务分组的日志速率、Promtail 采集状态。数据源：Loki。",
+  "description": "Logs Overview dashboard — Loki log volume trends, error/warning log counts, per-service log rates, Promtail collection status。Data source: Loki.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -33,7 +33,7 @@
       },
       "id": 100,
       "panels": [],
-      "title": "日志量趋势",
+      "title": "Log Volume Trends",
       "type": "row"
     },
     {
@@ -41,7 +41,7 @@
         "type": "loki",
         "uid": "${DS_LOKI}"
       },
-      "description": "按 job 分组的日志量趋势（每秒日志行数）。",
+      "description": "Log volume trend by job (log lines per second).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -129,7 +129,7 @@
           "refId": "A"
         }
       ],
-      "title": "日志量趋势（按 job）",
+      "title": "Log Volume Trend (by job)",
       "type": "timeseries"
     },
     {
@@ -142,7 +142,7 @@
       },
       "id": 101,
       "panels": [],
-      "title": "错误与警告",
+      "title": "Errors and Warnings",
       "type": "row"
     },
     {
@@ -150,7 +150,7 @@
         "type": "loki",
         "uid": "${DS_LOKI}"
       },
-      "description": "错误日志计数（含 error/ERROR/panic/fatal）。",
+      "description": "Error log count (includes error/ERROR/panic/fatal).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -214,7 +214,7 @@
           "refId": "A"
         }
       ],
-      "title": "错误日志计数 (1h)",
+      "title": "Error Log Count (1h)",
       "type": "stat"
     },
     {
@@ -222,7 +222,7 @@
         "type": "loki",
         "uid": "${DS_LOKI}"
       },
-      "description": "警告日志计数（含 warn/WARN/warning）。",
+      "description": "Warning log count (includes warn/WARN/warning).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -286,7 +286,7 @@
           "refId": "A"
         }
       ],
-      "title": "警告日志计数 (1h)",
+      "title": "Warning Log Count (1h)",
       "type": "stat"
     },
     {
@@ -299,7 +299,7 @@
       },
       "id": 102,
       "panels": [],
-      "title": "按服务分组的日志速率",
+      "title": "Log Rate by Service",
       "type": "row"
     },
     {
@@ -307,7 +307,7 @@
         "type": "loki",
         "uid": "${DS_LOKI}"
       },
-      "description": "按服务（program/container）分组的日志速率。",
+      "description": "Log rate grouped by service (program/container).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -407,7 +407,7 @@
           "refId": "B"
         }
       ],
-      "title": "按服务分组的日志速率",
+      "title": "Log Rate by Service",
       "type": "timeseries"
     },
     {
@@ -420,7 +420,7 @@
       },
       "id": 103,
       "panels": [],
-      "title": "Promtail 采集状态",
+      "title": "Promtail Collection Status",
       "type": "row"
     },
     {
@@ -428,7 +428,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Promtail 活跃 tail 数量。",
+      "description": "Number of active Promtail tails.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -484,7 +484,7 @@
           "refId": "A"
         }
       ],
-      "title": "Promtail 活跃 Tails",
+      "title": "Promtail Active Tails",
       "type": "stat"
     },
     {
@@ -492,7 +492,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Promtail 日志推送速率（每秒行数）。",
+      "description": "Promtail log push rate (lines per second).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -580,7 +580,7 @@
           "refId": "A"
         }
       ],
-      "title": "Promtail 日志推送速率",
+      "title": "Promtail Log Push Rate",
       "type": "timeseries"
     },
     {
@@ -588,7 +588,7 @@
         "type": "loki",
         "uid": "${DS_LOKI}"
       },
-      "description": "实时日志流浏览。",
+      "description": "Real-time log stream browsing.",
       "gridPos": {
         "h": 10,
         "w": 24,
@@ -620,7 +620,7 @@
           "maxLines": 200
         }
       ],
-      "title": "实时日志流",
+      "title": "Real-time Log Stream",
       "type": "logs"
     }
   ],
@@ -639,7 +639,7 @@
           "text": "Loki",
           "value": "Loki"
         },
-        "description": "Loki 数据源 UID（由 agents/grafana-datasources.yml 自动配置）。",
+        "description": "Loki data source UID (auto-configured by agents/grafana-datasources.yml).",
         "hide": 0,
         "includeAll": false,
         "label": "Loki",
@@ -659,7 +659,7 @@
           "text": "Prometheus",
           "value": "Prometheus"
         },
-        "description": "Prometheus 数据源 UID（由 agents/grafana-datasources.yml 自动配置）。",
+        "description": "Prometheus data source UID (auto-configured by agents/grafana-datasources.yml).",
         "hide": 0,
         "includeAll": false,
         "label": "Prometheus",
@@ -681,7 +681,7 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "日志总览",
+  "title": "Logs Overview",
   "uid": "logs-overview",
   "version": 1,
   "weekStart": ""
